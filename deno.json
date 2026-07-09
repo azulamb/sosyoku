@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "build": "deno bundle --platform browser --format iife --minify src/app.ts -o docs/app.js",
+    "build:icons": "deno run -A scripts/gen-icons.ts",
+    "build:font-icons": "deno run -A scripts/gen-material-symbols.ts",
+    "serve": "deno run -A scripts/serve.ts",
+    "check": "deno check src/app.ts",
+    "fmt": "deno fmt src scripts"
+  },
+  "imports": {
+    "@azulamb/zipper": "jsr:@azulamb/zipper",
+    "@std/http/file-server": "jsr:@std/http/file-server"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["dom", "dom.iterable", "deno.ns", "esnext"]
+  },
+  "fmt": {
+    "singleQuote": true,
+    "lineWidth": 120,
+    "exclude": [
+      "docs/*.svg"
+    ]
+  }
+}

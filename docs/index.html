@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#007acc" />
+    <title>Sosyoku</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <app-topbar>
+      <menu-button slot="menu">
+        <app-menu></app-menu>
+      </menu-button>
+      <tool-bar slot="tools"></tool-bar>
+    </app-topbar>
+
+    <panel-area data-side="left" id="panel-left"></panel-area>
+
+    <div class="canvas-area">
+      <canvas-tabs></canvas-tabs>
+      <canvas-desk></canvas-desk>
+    </div>
+
+    <panel-area data-side="right" id="panel-right"></panel-area>
+
+    <status-bar></status-bar>
+
+    <script src="app.js"></script>
+  </body>
+</html>

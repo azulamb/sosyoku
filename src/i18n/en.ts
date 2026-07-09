@@ -1,0 +1,88 @@
+import type { TranslationKey } from './ja.ts';
+
+export const en: Record<TranslationKey, string> = {
+  'menu.open': 'Open File',
+  'menu.save': 'Save File',
+  'menu.export': 'Export',
+  'menu.documentSettings': 'Document Settings',
+  'menu.settings': 'Settings',
+  'menu.about': 'About Sosyoku',
+
+  'tool.undo': 'Undo',
+  'tool.redo': 'Redo',
+  'tool.save': 'Save',
+  'tool.grid': 'Toggle Grid',
+  'tool.pen': 'Pen',
+  'tool.fill': 'Fill',
+  'tool.eraser': 'Eraser',
+  'tool.select': 'Select',
+  'tool.move': 'Move',
+
+  'panel.layers': 'Layers',
+  'panel.layers.add': 'Add Layer',
+  'panel.layers.remove': 'Remove Layer',
+  'panel.pens': 'Pens',
+  'panel.pens.add': 'Add Pen',
+  'panel.pens.export': 'Export',
+  'panel.pens.import': 'Import',
+  'panel.pens.io': 'Export / Import',
+
+  'statusbar.pressure': 'Pressure',
+  'statusbar.zoom.reset': 'Reset',
+  'statusbar.zoom.hint': 'Double-click to change',
+
+  'dialog.cancel': 'Cancel',
+  'dialog.save': 'Save',
+  'dialog.change': 'Change',
+  'dialog.close': 'Close',
+
+  'colorpicker.title': 'Choose Color',
+  'rename.layer.title': 'Rename Layer',
+  'rename.pen.title': 'Rename Pen',
+  'rename.document.title': 'Rename Document',
+
+  'docsettings.title': 'Document Settings',
+  'docsettings.category.document': 'Document',
+  'docsettings.category.grid': 'Grid',
+  'docsettings.title.label': 'Title',
+  'docsettings.width.label': 'Width (px, max {max})',
+  'docsettings.height.label': 'Height (px, max {max})',
+  'docsettings.grid.add': '+ Add Grid',
+  'docsettings.grid.remove': 'Remove',
+
+  'appsettings.title': 'Settings',
+  'appsettings.category.general': 'General',
+  'appsettings.category.palette': 'Palette',
+  'appsettings.language.label': 'Language',
+  'appsettings.language.auto': 'Auto (follow browser)',
+  'appsettings.language.ja': '日本語',
+  'appsettings.language.en': 'English',
+  'appsettings.theme.label': 'Theme',
+  'appsettings.theme.auto': 'Auto (follow OS)',
+  'appsettings.theme.light': 'Light',
+  'appsettings.theme.dark': 'Dark',
+  'appsettings.palette.add': '+ Add to Palette',
+  'appsettings.export': 'Export Settings',
+  'appsettings.import': 'Import Settings',
+
+  'about.appName': 'Sosyoku',
+  'about.tagline': 'A simple one-layer-one-color drawing tool',
+
+  'pen.export.title': 'Select pens to export',
+  'pen.export.action': 'Export',
+  'pen.import.title': 'Select pens to import',
+  'pen.import.action': 'Import',
+
+  'layer.pen.placeholder': 'Pen panel (coming soon)',
+
+  'document.untitled': 'Untitled',
+  'layer.defaultName': 'Layer {n}',
+  'pen.defaultName': 'Pen {n}',
+
+  'tab.new': 'New Document',
+  'layer.visibility': 'Show/Hide',
+  'layer.lock': 'Lock',
+  'pen.shapeToggle': 'Toggle shape',
+  'pen.size': 'Size (px)',
+  'pen.delete': 'Delete',
+};
