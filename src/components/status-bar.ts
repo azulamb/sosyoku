@@ -1,7 +1,7 @@
 /*
 <status-bar>
 ズーム割合・キャンバスサイズ・筆圧を表示するステータスバー。
-ズーム割合をダブルクリックすると、スライダー・数値入力・リセットを持つポップアップが開き、
+ズーム割合をクリックすると、スライダー・数値入力・リセットを持つポップアップが開き、
 リアルタイムにズームを変更できる(他の場所をクリック/Escapeで閉じる)。
 */
 import { t } from '../i18n/index.ts';
@@ -124,7 +124,10 @@ const ZOOM_MAX_PERCENT = 1600;
         shadow.appendChild(this.sizeEl);
         shadow.appendChild(this.pressureEl);
 
-        this.zoomEl.addEventListener('click', () => this.openZoomPopup());
+        this.zoomEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.openZoomPopup();
+        });
         this.zoomSlider.addEventListener('input', () => {
           this.applyZoomPercent(Number(this.zoomSlider.value));
         });
