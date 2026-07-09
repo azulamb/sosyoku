@@ -19,6 +19,8 @@
     "singleQuote": true,
     "lineWidth": 120,
     "exclude": [
+      "docs/*.css",
+      "docs/*.js",
       "docs/*.svg"
     ]
   }

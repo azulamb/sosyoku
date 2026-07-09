@@ -16,6 +16,7 @@ import './components/pen-panel.ts';
 import './components/pen-io-modal.ts';
 import './components/status-bar.ts';
 import './components/canvas-tabs.ts';
+import './components/pressure-curve-editor.ts';
 
 import { SosyokuDocument } from './core/document.ts';
 import type { TabInfo } from './components/canvas-tabs.ts';
@@ -30,6 +31,7 @@ import { t } from './i18n/index.ts';
 import type { SettingsCategory } from './components/settings-modal.ts';
 import type { ToolBarTool } from './components/tool-bar.ts';
 import type { BrushSetting, ToolName } from './components/drawing-canvas.ts';
+import type { CurvePoint } from './core/pressure-curve.ts';
 
 type ToolBarElement = HTMLElement & {
   setActiveTool(tool: ToolBarTool): void;
@@ -41,6 +43,7 @@ type DrawingCanvasElement = HTMLElement & {
   setDocument(doc: SosyokuDocument): void;
   setTool(tool: ToolName): void;
   setBrush(brush: BrushSetting): void;
+  setPressureCurve(points: CurvePoint[]): void;
   setGridVisible(visible: boolean): void;
   setBackgroundColor(color: string): void;
   render(): void;
@@ -122,6 +125,7 @@ function bootstrap() {
   // パレットが編集された場合、表示中のキャンバス背景色(パレット1番目の色)を追従させる
   document.addEventListener('settings-changed', () => {
     drawingCanvas?.setBackgroundColor(settingsStore.get().palette[0] ?? '#ffffff');
+    drawingCanvas?.setPressureCurve(settingsStore.get().pressureCurve);
   });
 
   const colorPicker = document.createElement('color-picker-modal');
@@ -163,6 +167,7 @@ function bootstrap() {
     statusBar?.setPressure(detail.pressure);
   });
   drawingCanvas.setBrush({ radius: 3, shape: 'round' });
+  drawingCanvas.setPressureCurve(settingsStore.get().pressureCurve);
 
   toolBar = document.querySelector('tool-bar') as unknown as ToolBarElement | null;
   toolBar?.addEventListener('tool-change', (e) => {

@@ -27,7 +27,11 @@ export const ja = {
 
   'statusbar.pressure': '筆圧',
   'statusbar.zoom.reset': 'リセット',
-  'statusbar.zoom.hint': 'ダブルクリックで変更',
+  'statusbar.zoom.hint': 'クリックで変更',
+
+  'pressurecurve.hint':
+    '横軸: 入力される筆圧の強さ(左が弱い、右が強い) / 縦軸: 実際に反映される強さ(下が弱い、上が強い)。グラフをタップしてポイントを追加、ドラッグで移動、グラフの外にドラッグすると削除できます。',
+  'pressurecurve.reset': 'リセット',
 
   'dialog.cancel': 'キャンセル',
   'dialog.save': '保存',
@@ -51,6 +55,7 @@ export const ja = {
   'appsettings.title': '設定',
   'appsettings.category.general': '一般',
   'appsettings.category.palette': 'パレット',
+  'appsettings.category.pressure': '筆圧',
   'appsettings.language.label': '言語',
   'appsettings.language.auto': '自動(ブラウザに合わせる)',
   'appsettings.language.ja': '日本語',

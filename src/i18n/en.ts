@@ -29,7 +29,11 @@ export const en: Record<TranslationKey, string> = {
 
   'statusbar.pressure': 'Pressure',
   'statusbar.zoom.reset': 'Reset',
-  'statusbar.zoom.hint': 'Double-click to change',
+  'statusbar.zoom.hint': 'Click to change',
+
+  'pressurecurve.hint':
+    'X axis: input pen pressure (left = weak, right = strong). Y axis: how strongly it is applied (bottom = weak, top = strong). Tap the graph to add a point, drag to move it, drag it outside the graph to delete it.',
+  'pressurecurve.reset': 'Reset',
 
   'dialog.cancel': 'Cancel',
   'dialog.save': 'Save',
@@ -53,6 +57,7 @@ export const en: Record<TranslationKey, string> = {
   'appsettings.title': 'Settings',
   'appsettings.category.general': 'General',
   'appsettings.category.palette': 'Palette',
+  'appsettings.category.pressure': 'Pressure',
   'appsettings.language.label': 'Language',
   'appsettings.language.auto': 'Auto (follow browser)',
   'appsettings.language.ja': '日本語',

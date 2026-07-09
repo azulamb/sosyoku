@@ -2,7 +2,7 @@
   "name": "Sosyoku",
   "short_name": "Sosyoku",
   "description": "1レイヤー1色のシンプルなお絵かきツール",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
@@ -17,7 +17,7 @@
   ],
   "file_handlers": [
     {
-      "action": "./index.html",
+      "action": "./",
       "accept": {
         "application/zip": [".ssx"]
       },

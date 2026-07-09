@@ -3,12 +3,18 @@ import { type GridSetting, MAX_CANVAS_SIZE, nextGridId, type SosyokuDocument } f
 import { applyTheme, settingsStore } from './settings-store.ts';
 import { downloadBlob, pickFiles } from './file-io.ts';
 import { t } from '../i18n/index.ts';
+import type { CurvePoint } from './pressure-curve.ts';
 
 export interface EditableCategory {
   id: string;
   label: string;
   content: HTMLElement;
   apply: () => void;
+}
+
+interface PressureCurveEditorElement extends HTMLElement {
+  getPoints(): CurvePoint[];
+  setPoints(points: CurvePoint[]): void;
 }
 
 function fieldStyle(el: HTMLElement) {
@@ -251,6 +257,11 @@ export function buildAppSettingsCategories(): EditableCategory[] {
   paletteContent.appendChild(addRow);
   paletteContent.appendChild(ioRow);
 
+  const pressureContent = document.createElement('div');
+  const curveEditor = document.createElement('pressure-curve-editor') as unknown as PressureCurveEditorElement;
+  curveEditor.setPoints(settings.pressureCurve);
+  pressureContent.appendChild(curveEditor);
+
   return [
     {
       id: 'general',
@@ -270,6 +281,14 @@ export function buildAppSettingsCategories(): EditableCategory[] {
       content: paletteContent,
       apply: () => {
         settingsStore.update({ palette: [...palette] });
+      },
+    },
+    {
+      id: 'pressure',
+      label: t('appsettings.category.pressure'),
+      content: pressureContent,
+      apply: () => {
+        settingsStore.update({ pressureCurve: curveEditor.getPoints() });
       },
     },
   ];

@@ -53,13 +53,12 @@ interface MenuButtonHost extends HTMLElement {
             display:flex; align-items:center; justify-content:space-between;
             padding:8px; border-bottom:1px solid var(--border); font-size:12px; font-weight:600;
           }
-          .actions button {
+          .actions > button {
             width:26px; height:26px; border:none; background:transparent; color:inherit;
             font-size:14px; cursor:pointer; border-radius:4px;
           }
-          .actions button:hover { background: var(--bg-sunken); }
+          .actions > button:hover { background: var(--bg-sunken); }
           .list { flex:1; overflow-y:auto; min-height:0; }
-          .io { padding:8px; border-top:1px solid var(--border); display:flex; justify-content:center; flex:none; }
         `;
 
         const header = document.createElement('header');
@@ -72,14 +71,6 @@ interface MenuButtonHost extends HTMLElement {
         addBtn.appendChild(createIcon('add', 16));
         addBtn.title = t('panel.pens.add');
         actions.appendChild(addBtn);
-        header.appendChild(title);
-        header.appendChild(actions);
-
-        this.list = document.createElement('div');
-        this.list.className = 'list';
-
-        const io = document.createElement('div');
-        io.className = 'io';
 
         const ioMenu = document.createElement('menu-button') as unknown as MenuButtonHost;
         ioMenu.setAttribute('aria-label', t('panel.pens.io'));
@@ -98,7 +89,12 @@ interface MenuButtonHost extends HTMLElement {
         ioMenu.appendChild(ioIcon);
         ioMenu.appendChild(exportBtn);
         ioMenu.appendChild(importBtn);
-        io.appendChild(ioMenu);
+        actions.appendChild(ioMenu);
+        header.appendChild(title);
+        header.appendChild(actions);
+
+        this.list = document.createElement('div');
+        this.list.className = 'list';
 
         document.addEventListener('locale-changed', () => {
           title.textContent = t('panel.pens');
@@ -112,7 +108,6 @@ interface MenuButtonHost extends HTMLElement {
         shadow.appendChild(style);
         shadow.appendChild(header);
         shadow.appendChild(this.list);
-        shadow.appendChild(io);
 
         this.activePenId = settingsStore.get().pens[0]?.id ?? '';
 

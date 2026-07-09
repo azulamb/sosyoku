@@ -124,7 +124,7 @@ const ZOOM_MAX_PERCENT = 1600;
         shadow.appendChild(this.sizeEl);
         shadow.appendChild(this.pressureEl);
 
-        this.zoomEl.addEventListener('dblclick', () => this.openZoomPopup());
+        this.zoomEl.addEventListener('click', () => this.openZoomPopup());
         this.zoomSlider.addEventListener('input', () => {
           this.applyZoomPercent(Number(this.zoomSlider.value));
         });

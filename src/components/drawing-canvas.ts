@@ -9,6 +9,8 @@ import { GestureController } from '../core/pointer-input.ts';
 import { cropImageData } from '../core/imagedata.ts';
 import type { NormalLayer, ReferenceLayer } from '../core/layer.ts';
 import type { BrushShape } from '../core/layer.ts';
+import { DEFAULT_PRESSURE_CURVE, evaluatePressureCurve } from '../core/pressure-curve.ts';
+import type { CurvePoint } from '../core/pressure-curve.ts';
 
 export type ToolName = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
 
@@ -35,6 +37,7 @@ interface DrawingCanvasElement extends HTMLElement {
   setDocument(doc: SosyokuDocument): void;
   setTool(tool: ToolName): void;
   setBrush(brush: BrushSetting): void;
+  setPressureCurve(points: CurvePoint[]): void;
   setGridVisible(visible: boolean): void;
   setBackgroundColor(color: string): void;
   render(): void;
@@ -62,6 +65,7 @@ const REF_HANDLE_SIZE = 14;
       private doc: SosyokuDocument | null = null;
       private tool: ToolName = 'pen';
       private brush: BrushSetting = { radius: 3, shape: 'round' };
+      private pressureCurve: CurvePoint[] = DEFAULT_PRESSURE_CURVE;
       private gesture = new GestureController();
 
       private strokeLayer: NormalLayer | null = null;
@@ -144,6 +148,10 @@ const REF_HANDLE_SIZE = 14;
 
       setBrush(brush: BrushSetting) {
         this.brush = brush;
+      }
+
+      setPressureCurve(points: CurvePoint[]) {
+        this.pressureCurve = points;
       }
 
       /** キャンバス背後の表示色(パレット1番目の色)。ドキュメントデータには含まれず表示のみに影響する */
@@ -492,7 +500,8 @@ const REF_HANDLE_SIZE = 14;
 
       private paintAt(point: { x: number; y: number }, pressure: number) {
         if (!this.strokeLayer) return;
-        const radius = this.brush.radius * (0.3 + Math.min(1, Math.max(0, pressure)) * 0.7);
+        const adjusted = evaluatePressureCurve(this.pressureCurve, Math.min(1, Math.max(0, pressure)));
+        const radius = this.brush.radius * (0.3 + Math.min(1, Math.max(0, adjusted)) * 0.7);
         const bbox = this.strokeLayer.stamp(point.x, point.y, radius, this.brush.shape, this.tool === 'eraser');
         if (!bbox) return;
         const maxX = bbox.x + bbox.w - 1;

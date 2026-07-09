@@ -1,3 +1,5 @@
+import { type CurvePoint, DEFAULT_PRESSURE_CURVE } from './pressure-curve.ts';
+
 export const DEFAULT_PALETTE: string[] = [
   '#F5F8FF', // soft white
   '#141820', // soft black
@@ -42,12 +44,19 @@ export interface AppSettings {
   language: LanguageSetting;
   theme: ThemeSetting;
   pens: PenSetting[];
+  pressureCurve: CurvePoint[];
 }
 
 const STORAGE_KEY = 'sosyoku.settings.v1';
 
 function defaults(): AppSettings {
-  return { palette: [...DEFAULT_PALETTE], language: 'auto', theme: 'auto', pens: DEFAULT_PENS.map((p) => ({ ...p })) };
+  return {
+    palette: [...DEFAULT_PALETTE],
+    language: 'auto',
+    theme: 'auto',
+    pens: DEFAULT_PENS.map((p) => ({ ...p })),
+    pressureCurve: DEFAULT_PRESSURE_CURVE.map((p) => ({ ...p })),
+  };
 }
 
 let cache: AppSettings | null = null;
