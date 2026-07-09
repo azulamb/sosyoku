@@ -190,6 +190,17 @@ export function buildAppSettingsCategories(): EditableCategory[] {
   generalContent.appendChild(labeledField(t('appsettings.language.label'), langSelect));
   generalContent.appendChild(labeledField(t('appsettings.theme.label'), themeSelect));
 
+  const zoomReverseRow = document.createElement('label');
+  zoomReverseRow.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:12px; cursor:pointer;';
+  const zoomReverseCheckbox = document.createElement('input');
+  zoomReverseCheckbox.type = 'checkbox';
+  zoomReverseCheckbox.checked = settings.zoomWheelReversed;
+  const zoomReverseText = document.createElement('span');
+  zoomReverseText.textContent = t('appsettings.zoomWheelReversed.label');
+  zoomReverseRow.appendChild(zoomReverseCheckbox);
+  zoomReverseRow.appendChild(zoomReverseText);
+  generalContent.appendChild(zoomReverseRow);
+
   const paletteContent = document.createElement('div');
   const grid = document.createElement('div');
   grid.style.cssText =
@@ -271,6 +282,7 @@ export function buildAppSettingsCategories(): EditableCategory[] {
         settingsStore.update({
           language: langSelect.value as 'auto' | 'ja' | 'en',
           theme: themeSelect.value as 'auto' | 'light' | 'dark',
+          zoomWheelReversed: zoomReverseCheckbox.checked,
         });
         applyTheme(settingsStore.get().theme);
       },

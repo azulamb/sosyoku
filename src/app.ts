@@ -238,6 +238,7 @@ function bootstrap() {
   document.addEventListener('sosyoku-about-request', () => void aboutModal.open());
   document.addEventListener('sosyoku-document-settings-request', () => void openDocumentSettings(settingsModal));
   document.addEventListener('sosyoku-settings-request', () => void openAppSettings(settingsModal));
+  document.addEventListener('sosyoku-install-request', () => void promptPwaInstall());
 
   setupFileHandling((files) => void handleIncomingFiles(files));
 }
@@ -252,6 +253,32 @@ function registerServiceWorker() {
 }
 
 registerServiceWorker();
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+
+globalThis.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e as BeforeInstallPromptEvent;
+  document.dispatchEvent(new CustomEvent('sosyoku-installable-changed', { detail: { installable: true } }));
+});
+
+globalThis.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  document.dispatchEvent(new CustomEvent('sosyoku-installable-changed', { detail: { installable: false } }));
+});
+
+async function promptPwaInstall() {
+  if (!deferredInstallPrompt) return;
+  await deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  document.dispatchEvent(new CustomEvent('sosyoku-installable-changed', { detail: { installable: false } }));
+}
 
 async function openDocumentSettings(settingsModal: SettingsModalElement) {
   const categories = buildDocumentSettingsCategories(doc);

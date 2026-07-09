@@ -1,7 +1,8 @@
 /*
 <app-menu>
 menu-button内にスロットされるメニュー項目一覧。
-ファイルを開く/保存する/エクスポート/ドキュメントの設定/設定/Sosyokuについて を発火する。
+ファイルを開く/保存する/エクスポート/ドキュメントの設定/設定/アプリをインストール/Sosyokuについて を発火する。
+「アプリをインストール」はPWAとしてインストール可能な間だけ表示する('sosyoku-installable-changed'イベントで制御)。
 実際の処理はイベントを受け取ったapp.ts側が行う(このコンポーネントはイベント発行のみ)。
 */
 import { t } from '../i18n/index.ts';
@@ -26,6 +27,8 @@ interface MenuButtonHost extends HTMLElement {
   customElements.define(
     tagname,
     class extends HTMLElement {
+      private installBtn: HTMLButtonElement | null = null;
+
       constructor() {
         super();
         const shadow = this.attachShadow({ mode: 'open' });
@@ -52,6 +55,7 @@ interface MenuButtonHost extends HTMLElement {
             { key: 'menu.settings', event: 'sosyoku-settings-request' },
           ],
           [
+            { key: 'menu.install', event: 'sosyoku-install-request' },
             { key: 'menu.about', event: 'sosyoku-about-request' },
           ],
         ];
@@ -68,6 +72,10 @@ interface MenuButtonHost extends HTMLElement {
               this.closeParentMenu();
             });
             buttons.push({ key: item.key, btn });
+            if (item.key === 'menu.install') {
+              this.installBtn = btn;
+              btn.style.display = 'none';
+            }
             shadow.appendChild(btn);
           }
           if (index < groups.length - 1) {
@@ -79,6 +87,11 @@ interface MenuButtonHost extends HTMLElement {
 
         document.addEventListener('locale-changed', () => {
           for (const { key, btn } of buttons) btn.textContent = t(key);
+        });
+
+        document.addEventListener('sosyoku-installable-changed', (e) => {
+          const installable = (e as CustomEvent<{ installable: boolean }>).detail.installable;
+          if (this.installBtn) this.installBtn.style.display = installable ? '' : 'none';
         });
       }
 

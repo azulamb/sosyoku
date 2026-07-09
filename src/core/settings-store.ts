@@ -45,6 +45,7 @@ export interface AppSettings {
   theme: ThemeSetting;
   pens: PenSetting[];
   pressureCurve: CurvePoint[];
+  zoomWheelReversed: boolean;
 }
 
 const STORAGE_KEY = 'sosyoku.settings.v1';
@@ -56,6 +57,7 @@ function defaults(): AppSettings {
     theme: 'auto',
     pens: DEFAULT_PENS.map((p) => ({ ...p })),
     pressureCurve: DEFAULT_PRESSURE_CURVE.map((p) => ({ ...p })),
+    zoomWheelReversed: false,
   };
 }
 

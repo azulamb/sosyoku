@@ -4,6 +4,7 @@ export const ja = {
   'menu.export': 'エクスポート',
   'menu.documentSettings': 'ドキュメントの設定',
   'menu.settings': '設定',
+  'menu.install': 'アプリをインストール',
   'menu.about': 'Sosyokuについて',
 
   'tool.undo': '元に戻す',
@@ -67,6 +68,7 @@ export const ja = {
   'appsettings.palette.add': '+ パレットに追加',
   'appsettings.export': '設定をエクスポート',
   'appsettings.import': '設定をインポート',
+  'appsettings.zoomWheelReversed.label': 'Ctrl+ホイールでの拡大縮小方向を反転',
 
   'about.appName': 'Sosyoku',
   'about.tagline': '1レイヤー1色のシンプルなお絵かきツール',

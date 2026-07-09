@@ -6,6 +6,7 @@ export const en: Record<TranslationKey, string> = {
   'menu.export': 'Export',
   'menu.documentSettings': 'Document Settings',
   'menu.settings': 'Settings',
+  'menu.install': 'Install App',
   'menu.about': 'About Sosyoku',
 
   'tool.undo': 'Undo',
@@ -69,6 +70,7 @@ export const en: Record<TranslationKey, string> = {
   'appsettings.palette.add': '+ Add to Palette',
   'appsettings.export': 'Export Settings',
   'appsettings.import': 'Import Settings',
+  'appsettings.zoomWheelReversed.label': 'Reverse Ctrl+wheel zoom direction',
 
   'about.appName': 'Sosyoku',
   'about.tagline': 'A simple one-layer-one-color drawing tool',

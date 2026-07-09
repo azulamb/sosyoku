@@ -2,8 +2,9 @@
 <canvas-desk>
 スクロール可能なビューポート。スロットされたキャンバス要素(drawing-canvas)をホストし、
 子から発火される 'pan-zoom' イベント(2本指操作)を受けてスクロール位置とズーム倍率を更新する。
-拡大縮小時はスクロールバーで移動できる。
+拡大縮小時はスクロールバーで移動できる。Ctrl+ホイールでも拡大縮小できる(方向は設定で反転可能)。
 */
+import { settingsStore } from '../core/settings-store.ts';
 
 interface CanvasDeskElement extends HTMLElement {
   readonly zoom: number;
@@ -43,6 +44,7 @@ interface CanvasDeskElement extends HTMLElement {
         shadow.appendChild(surface);
 
         this.addEventListener('pan-zoom', this.onPanZoom as EventListener);
+        this.addEventListener('wheel', this.onWheel, { passive: false });
       }
 
       get zoom(): number {
@@ -61,6 +63,15 @@ interface CanvasDeskElement extends HTMLElement {
         const target = this.firstElementChild as HTMLElement | null;
         if (target) target.style.transform = `scale(${this.zoomValue})`;
       }
+
+      private onWheel = (e: WheelEvent) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        const reversed = settingsStore.get().zoomWheelReversed;
+        const delta = reversed ? e.deltaY : -e.deltaY;
+        const factor = Math.exp(delta * 0.0015);
+        this.setZoom(this.zoomValue * factor);
+      };
 
       private onPanZoom = (e: Event) => {
         const detail = (e as CustomEvent).detail as { dx: number; dy: number; scaleFactor: number };
