@@ -7,10 +7,7 @@ menu-button内にスロットされるメニュー項目一覧。
 */
 import { t } from '../i18n/index.ts';
 import type { TranslationKey } from '../i18n/index.ts';
-
-interface MenuButtonHost extends HTMLElement {
-  close(): void;
-}
+import type { MenuButtonElement } from './menu-button.ts';
 
 ((script, init) => {
   const tagname = script.dataset['appMenu'] || 'app-menu';
@@ -96,7 +93,7 @@ interface MenuButtonHost extends HTMLElement {
       }
 
       private closeParentMenu() {
-        const menuButton = this.closest('menu-button') as MenuButtonHost | null;
+        const menuButton = this.closest('menu-button') as MenuButtonElement | null;
         menuButton?.close();
       }
     },

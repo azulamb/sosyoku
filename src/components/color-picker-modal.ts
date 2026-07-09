@@ -7,7 +7,7 @@ import { showBlockingDialog } from '../core/dialog.ts';
 import { settingsStore } from '../core/settings-store.ts';
 import { t } from '../i18n/index.ts';
 
-interface ColorPickerModalElement extends HTMLElement {
+export interface ColorPickerModalElement extends HTMLElement {
   open(currentColor: string): Promise<string | null>;
 }
 

@@ -2,7 +2,7 @@
 <tool-button>
 ツールバー用のシンプルなトグル/アクションボタン。属性 active / disabled で状態を切り替える。
 */
-interface ToolButtonElement extends HTMLElement {
+export interface ToolButtonElement extends HTMLElement {
   active: boolean;
   disabled: boolean;
 }

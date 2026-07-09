@@ -6,15 +6,11 @@ import './tool-button.ts';
 import { t } from '../i18n/index.ts';
 import type { TranslationKey } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
+import type { ToolButtonElement } from './tool-button.ts';
 
 export type ToolBarTool = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
 
-interface ToolButtonElement extends HTMLElement {
-  active: boolean;
-  disabled: boolean;
-}
-
-interface ToolBarElement extends HTMLElement {
+export interface ToolBarElement extends HTMLElement {
   setActiveTool(tool: ToolBarTool): void;
   setUndoRedoEnabled(canUndo: boolean, canRedo: boolean): void;
   setGridActive(active: boolean): void;

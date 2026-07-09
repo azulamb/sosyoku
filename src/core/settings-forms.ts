@@ -3,18 +3,14 @@ import { type GridSetting, MAX_CANVAS_SIZE, nextGridId, type SosyokuDocument } f
 import { applyTheme, settingsStore } from './settings-store.ts';
 import { downloadBlob, pickFiles } from './file-io.ts';
 import { t } from '../i18n/index.ts';
-import type { CurvePoint } from './pressure-curve.ts';
+import type { PressureCurveEditorElement } from '../components/pressure-curve-editor.ts';
+import { hexToRgba, rgbaToHex8, rgbToHex } from './color.ts';
 
 export interface EditableCategory {
   id: string;
   label: string;
   content: HTMLElement;
   apply: () => void;
-}
-
-interface PressureCurveEditorElement extends HTMLElement {
-  getPoints(): CurvePoint[];
-  setPoints(points: CurvePoint[]): void;
 }
 
 function fieldStyle(el: HTMLElement) {
@@ -66,6 +62,27 @@ export function buildDocumentSettingsCategories(doc: SosyokuDocument): EditableC
   docContent.appendChild(labeledField(t('docsettings.title.label'), titleInput));
   docContent.appendChild(labeledField(t('docsettings.width.label', { max: MAX_CANVAS_SIZE }), widthInput));
   docContent.appendChild(labeledField(t('docsettings.height.label', { max: MAX_CANVAS_SIZE }), heightInput));
+
+  const bgRow = document.createElement('div');
+  bgRow.style.cssText = 'display:flex; align-items:center; gap:10px;';
+  const bgColorInput = document.createElement('input');
+  bgColorInput.type = 'color';
+  bgColorInput.style.cssText =
+    'width:48px; height:30px; padding:0; border:1px solid var(--border); border-radius:4px; background:none; flex:none;';
+  const bgAlphaInput = document.createElement('input');
+  bgAlphaInput.type = 'range';
+  bgAlphaInput.min = '0';
+  bgAlphaInput.max = '100';
+  bgAlphaInput.title = t('docsettings.backgroundColor.alpha');
+  bgAlphaInput.style.cssText = 'flex:1; accent-color: var(--accent);';
+
+  const initialBg = hexToRgba(doc.backgroundColor);
+  bgColorInput.value = rgbToHex(initialBg.r, initialBg.g, initialBg.b);
+  bgAlphaInput.value = String(Math.round(initialBg.a * 100));
+
+  bgRow.appendChild(bgColorInput);
+  bgRow.appendChild(bgAlphaInput);
+  docContent.appendChild(labeledField(t('docsettings.backgroundColor.label'), bgRow));
 
   const gridContent = document.createElement('div');
   const gridList = document.createElement('div');
@@ -134,6 +151,9 @@ export function buildDocumentSettingsCategories(doc: SosyokuDocument): EditableC
         const w = Number(widthInput.value);
         const h = Number(heightInput.value);
         if (w > 0 && h > 0 && (w !== doc.width || h !== doc.height)) doc.resize(w, h);
+        const { r, g, b } = hexToRgba(bgColorInput.value);
+        doc.backgroundColor = rgbaToHex8(r, g, b, Number(bgAlphaInput.value) / 100);
+        doc.markDirty();
       },
     },
     {
@@ -191,7 +211,8 @@ export function buildAppSettingsCategories(): EditableCategory[] {
   generalContent.appendChild(labeledField(t('appsettings.theme.label'), themeSelect));
 
   const zoomReverseRow = document.createElement('label');
-  zoomReverseRow.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:12px; cursor:pointer;';
+  zoomReverseRow.style.cssText =
+    'display:flex; align-items:center; gap:8px; margin-bottom:12px; font-size:12px; cursor:pointer;';
   const zoomReverseCheckbox = document.createElement('input');
   zoomReverseCheckbox.type = 'checkbox';
   zoomReverseCheckbox.checked = settings.zoomWheelReversed;

@@ -7,7 +7,7 @@
 import { t } from '../i18n/index.ts';
 import { openPopup } from '../core/popup.ts';
 
-interface StatusBarElement extends HTMLElement {
+export interface StatusBarElement extends HTMLElement {
   setZoom(zoom: number): void;
   setSize(width: number, height: number): void;
   setPressure(pressure: number | null): void;
@@ -54,7 +54,7 @@ const ZOOM_MAX_PERCENT = 1600;
           .zoom-value { cursor: pointer; }
           .zoom-value:hover { color: var(--text); }
           .zoom-popup {
-            position: absolute; margin: 0; padding: 14px; min-width: 240px;
+            position: absolute; margin: 0; padding: 14px; min-width: 240px; z-index: 1000;
             border: 1px solid var(--border); border-radius: 8px;
             background: var(--bg-elevated); box-shadow: var(--shadow); color: var(--text); font-size: 12px;
           }

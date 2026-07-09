@@ -11,6 +11,7 @@ import type { NormalLayer, ReferenceLayer } from '../core/layer.ts';
 import type { BrushShape } from '../core/layer.ts';
 import { DEFAULT_PRESSURE_CURVE, evaluatePressureCurve } from '../core/pressure-curve.ts';
 import type { CurvePoint } from '../core/pressure-curve.ts';
+import { hexToRgba } from '../core/color.ts';
 
 export type ToolName = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
 
@@ -33,7 +34,7 @@ interface Rect {
   h: number;
 }
 
-interface DrawingCanvasElement extends HTMLElement {
+export interface DrawingCanvasElement extends HTMLElement {
   setDocument(doc: SosyokuDocument): void;
   setTool(tool: ToolName): void;
   setBrush(brush: BrushSetting): void;
@@ -97,7 +98,7 @@ const REF_HANDLE_SIZE = 14;
           :host { display: block; }
           canvas {
             display: block;
-            background: var(--canvas-bg, #ffffff);
+            background-color: #ffffff;
             image-rendering: pixelated;
             touch-action: none;
           }
@@ -154,9 +155,22 @@ const REF_HANDLE_SIZE = 14;
         this.pressureCurve = points;
       }
 
-      /** キャンバス背後の表示色(パレット1番目の色)。ドキュメントデータには含まれず表示のみに影響する */
+      /**
+       * ドキュメントの背景色(#RRGGBBAA)を表示に反映する。アルファ値がある場合は市松模様の上に
+       * 半透明の背景色を重ねて表示する(市松模様自体はエクスポートには含まれない、表示上のみの演出)。
+       */
       setBackgroundColor(color: string) {
-        this.canvas.style.setProperty('--canvas-bg', color);
+        const { r, g, b, a } = hexToRgba(color);
+        if (a >= 1) {
+          this.canvas.style.backgroundImage = 'none';
+          this.canvas.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        } else {
+          this.canvas.style.backgroundColor = 'transparent';
+          this.canvas.style.backgroundImage =
+            `linear-gradient(rgba(${r}, ${g}, ${b}, ${a}), rgba(${r}, ${g}, ${b}, ${a})), ` +
+            `repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%)`;
+          this.canvas.style.backgroundSize = 'auto, 16px 16px';
+        }
       }
 
       setGridVisible(visible: boolean) {

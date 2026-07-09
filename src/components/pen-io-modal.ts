@@ -8,7 +8,7 @@ import { nextPenId, settingsStore } from '../core/settings-store.ts';
 import type { PenSetting } from '../core/settings-store.ts';
 import { t } from '../i18n/index.ts';
 
-interface PenIoModalElement extends HTMLElement {
+export interface PenIoModalElement extends HTMLElement {
   openExport(pens: PenSetting[]): Promise<void>;
   openImport(): Promise<void>;
 }

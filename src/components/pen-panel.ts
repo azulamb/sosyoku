@@ -6,22 +6,12 @@ import { nextPenId, settingsStore } from '../core/settings-store.ts';
 import type { PenSetting } from '../core/settings-store.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
+import type { PenItemElement } from './pen-item.ts';
+import type { PenIoModalElement } from './pen-io-modal.ts';
+import type { MenuButtonElement } from './menu-button.ts';
 
-interface PenPanelElement extends HTMLElement {
+export interface PenPanelElement extends HTMLElement {
   setActiveChangeCallback(cb: (pen: PenSetting) => void): void;
-}
-
-interface PenItemElement extends HTMLElement {
-  bind(pen: PenSetting, isActive: boolean): void;
-}
-
-interface PenIoModalElement extends HTMLElement {
-  openExport(pens: PenSetting[]): Promise<void>;
-  openImport(): Promise<void>;
-}
-
-interface MenuButtonHost extends HTMLElement {
-  close(): void;
 }
 
 ((script, init) => {
@@ -72,7 +62,7 @@ interface MenuButtonHost extends HTMLElement {
         addBtn.title = t('panel.pens.add');
         actions.appendChild(addBtn);
 
-        const ioMenu = document.createElement('menu-button') as unknown as MenuButtonHost;
+        const ioMenu = document.createElement('menu-button') as unknown as MenuButtonElement;
         ioMenu.setAttribute('aria-label', t('panel.pens.io'));
 
         const ioIcon = createIcon('more_vert', 18);

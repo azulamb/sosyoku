@@ -1,6 +1,12 @@
 {
   "tasks": {
-    "build": "deno bundle --platform browser --format iife --minify src/app.ts -o docs/app.js",
+    "build": {
+      "command": "deno bundle --platform browser --format iife --minify src/app.ts -o docs/app.js",
+      "dependencies": [
+        "build:sw-version"
+      ]
+    },
+    "build:sw-version": "deno run -A scripts/gen-sw-version.ts",
     "build:icons": "deno run -A scripts/gen-icons.ts",
     "build:font-icons": "deno run -A scripts/gen-material-symbols.ts",
     "serve": "deno run -A scripts/serve.ts",

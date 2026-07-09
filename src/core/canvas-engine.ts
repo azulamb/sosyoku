@@ -1,4 +1,5 @@
 import type { SosyokuDocument } from './document.ts';
+import { hexToRgba } from './color.ts';
 
 export class CanvasEngine {
   private target: HTMLCanvasElement;
@@ -53,11 +54,17 @@ export class CanvasEngine {
   }
 }
 
-/** 現在表示状態(visible)のレイヤーのみを合成してPNG化する(グリッドは含めない) */
+/**
+ * 現在表示状態(visible)のレイヤーのみを合成してPNG化する(グリッドは含めない)。
+ * 背景色はアルファ値込みで実際に合成する(市松模様はあくまで編集画面の表示上のみなので含めない)。
+ */
 export async function exportFlattenedPng(doc: SosyokuDocument): Promise<Blob> {
   const canvas = new OffscreenCanvas(doc.width, doc.height);
   const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
   ctx.imageSmoothingEnabled = false;
+  const { r, g, b, a } = hexToRgba(doc.backgroundColor);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+  ctx.fillRect(0, 0, doc.width, doc.height);
   for (let i = doc.layers.length - 1; i >= 0; i--) {
     const layer = doc.layers[i];
     if (!layer.visible) continue;

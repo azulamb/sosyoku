@@ -7,7 +7,7 @@ import { showBlockingDialog } from '../core/dialog.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
 
-interface PenItemElement extends HTMLElement {
+export interface PenItemElement extends HTMLElement {
   bind(pen: PenSetting, isActive: boolean): void;
 }
 

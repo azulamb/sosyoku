@@ -25,53 +25,21 @@ import { importImageAsReferenceLayer, isImageFile, isSsxFile, loadSsx, saveSsx }
 import { exportFlattenedPng } from './core/canvas-engine.ts';
 import { downloadBlob, pickFiles, setupDragAndDrop, setupFileHandling } from './core/file-io.ts';
 import { applyTheme, settingsStore } from './core/settings-store.ts';
+import { hexToRgb, rgbaToHex8 } from './core/color.ts';
 import type { PenSetting } from './core/settings-store.ts';
 import { buildAppSettingsCategories, buildDocumentSettingsCategories } from './core/settings-forms.ts';
 import { t } from './i18n/index.ts';
-import type { SettingsCategory } from './components/settings-modal.ts';
-import type { ToolBarTool } from './components/tool-bar.ts';
-import type { BrushSetting, ToolName } from './components/drawing-canvas.ts';
+import type { ToolBarElement, ToolBarTool } from './components/tool-bar.ts';
+import type { BrushSetting, DrawingCanvasElement, ToolName } from './components/drawing-canvas.ts';
 import type { CurvePoint } from './core/pressure-curve.ts';
-
-type ToolBarElement = HTMLElement & {
-  setActiveTool(tool: ToolBarTool): void;
-  setUndoRedoEnabled(canUndo: boolean, canRedo: boolean): void;
-  setGridActive(active: boolean): void;
-};
-
-type DrawingCanvasElement = HTMLElement & {
-  setDocument(doc: SosyokuDocument): void;
-  setTool(tool: ToolName): void;
-  setBrush(brush: BrushSetting): void;
-  setPressureCurve(points: CurvePoint[]): void;
-  setGridVisible(visible: boolean): void;
-  setBackgroundColor(color: string): void;
-  render(): void;
-};
-
-type LayerPanelElement = HTMLElement & {
-  setDocument(doc: SosyokuDocument): void;
-  setRenderCallback(cb: () => void): void;
-};
-
-type PanelAreaElement = HTMLElement & {
-  setPanel(el: HTMLElement): void;
-};
-
-type PenPanelElement = HTMLElement & {
-  setActiveChangeCallback(cb: (pen: PenSetting) => void): void;
-};
-
-type StatusBarElement = HTMLElement & {
-  setZoom(zoom: number): void;
-  setSize(width: number, height: number): void;
-  setPressure(pressure: number | null): void;
-  setZoomChangeCallback(cb: (zoom: number) => void): void;
-};
-
-type CanvasTabsElement = HTMLElement & {
-  setTabs(tabs: TabInfo[], activeId: string | null): void;
-};
+import type { LayerPanelElement } from './components/layer-panel.ts';
+import type { PanelAreaElement } from './components/panel-area.ts';
+import type { PenPanelElement } from './components/pen-panel.ts';
+import type { StatusBarElement } from './components/status-bar.ts';
+import type { CanvasTabsElement } from './components/canvas-tabs.ts';
+import type { CanvasDeskElement } from './components/canvas-desk.ts';
+import type { AboutModalElement } from './components/about-modal.ts';
+import type { SettingsModalElement } from './components/settings-modal.ts';
 
 let doc: SosyokuDocument;
 let drawingCanvas: DrawingCanvasElement;
@@ -111,20 +79,10 @@ Promise.all(REQUIRED_ELEMENTS.map((tag) => customElements.whenDefined(tag))).the
   bootstrap();
 });
 
-type SettingsModalElement = HTMLElement & {
-  open(title: string, categories: SettingsCategory[], initialCategoryId?: string): Promise<'save' | 'cancel'>;
-};
-
-type AboutModalElement = HTMLElement & {
-  open(): Promise<void>;
-};
-
 function bootstrap() {
   applyTheme(settingsStore.get().theme);
 
-  // パレットが編集された場合、表示中のキャンバス背景色(パレット1番目の色)を追従させる
   document.addEventListener('settings-changed', () => {
-    drawingCanvas?.setBackgroundColor(settingsStore.get().palette[0] ?? '#ffffff');
     drawingCanvas?.setPressureCurve(settingsStore.get().pressureCurve);
   });
 
@@ -154,9 +112,7 @@ function bootstrap() {
   });
 
   drawingCanvas = document.createElement('drawing-canvas') as unknown as DrawingCanvasElement;
-  const canvasDesk = document.querySelector('canvas-desk') as
-    | (HTMLElement & { zoom: number; setZoom(zoom: number): void })
-    | null;
+  const canvasDesk = document.querySelector('canvas-desk') as unknown as CanvasDeskElement | null;
   canvasDesk?.appendChild(drawingCanvas);
   canvasDesk?.addEventListener('zoom-changed', (e) => {
     statusBar?.setZoom((e as CustomEvent<{ zoom: number }>).detail.zoom);
@@ -286,6 +242,7 @@ async function openDocumentSettings(settingsModal: SettingsModalElement) {
   if (result === 'save') {
     for (const category of categories) category.apply();
     drawingCanvas.setDocument(doc);
+    drawingCanvas.setBackgroundColor(doc.backgroundColor);
     drawingCanvas.render();
     statusBar?.setSize(doc.width, doc.height);
     refreshTabs();
@@ -321,7 +278,7 @@ function switchToDocument(id: string) {
   if (!target) return;
   doc = target;
   drawingCanvas.setDocument(doc);
-  drawingCanvas.setBackgroundColor(settingsStore.get().palette[0] ?? '#ffffff');
+  drawingCanvas.setBackgroundColor(doc.backgroundColor);
   layerPanel.setDocument(doc);
   statusBar?.setSize(doc.width, doc.height);
   gridVisible = false;
@@ -333,10 +290,16 @@ function switchToDocument(id: string) {
   refreshTabs();
 }
 
-/** 新規ドキュメントを作成する。1枚目のレイヤー色にはパレットの2番目の色を使う(背景色は1番目の色) */
+/** 新規ドキュメントを作成する。1枚目のレイヤー色にはパレットの2番目の色を使う(背景色は1番目の色、不透明) */
 function createDocument(title: string): SosyokuDocument {
-  const doc = new SosyokuDocument({ title, width: 1000, height: 1000 });
   const palette = settingsStore.get().palette;
+  const [bgR, bgG, bgB] = hexToRgb(palette[0] ?? '#ffffff');
+  const doc = new SosyokuDocument({
+    title,
+    width: 1000,
+    height: 1000,
+    backgroundColor: rgbaToHex8(bgR, bgG, bgB, 1),
+  });
   const layer = new NormalLayer({
     name: t('layer.defaultName', { n: 1 }),
     width: doc.width,

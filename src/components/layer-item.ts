@@ -8,12 +8,9 @@ import type { Layer } from '../core/layer.ts';
 import { showBlockingDialog } from '../core/dialog.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
+import type { ColorPickerModalElement } from './color-picker-modal.ts';
 
-interface ColorPickerModalElement extends HTMLElement {
-  open(currentColor: string): Promise<string | null>;
-}
-
-interface LayerItemElement extends HTMLElement {
+export interface LayerItemElement extends HTMLElement {
   bind(layer: Layer, doc: SosyokuDocument): void;
 }
 

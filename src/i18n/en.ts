@@ -52,6 +52,8 @@ export const en: Record<TranslationKey, string> = {
   'docsettings.title.label': 'Title',
   'docsettings.width.label': 'Width (px, max {max})',
   'docsettings.height.label': 'Height (px, max {max})',
+  'docsettings.backgroundColor.label': 'Background Color',
+  'docsettings.backgroundColor.alpha': 'Opacity',
   'docsettings.grid.add': '+ Add Grid',
   'docsettings.grid.remove': 'Remove',
 

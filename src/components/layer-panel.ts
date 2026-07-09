@@ -6,18 +6,12 @@ import type { SosyokuDocument } from '../core/document.ts';
 import { NormalLayer } from '../core/layer.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
+import type { ColorPickerModalElement } from './color-picker-modal.ts';
+import type { LayerItemElement } from './layer-item.ts';
 
-interface LayerPanelElement extends HTMLElement {
+export interface LayerPanelElement extends HTMLElement {
   setDocument(doc: SosyokuDocument): void;
   setRenderCallback(cb: () => void): void;
-}
-
-interface ColorPickerModalElement extends HTMLElement {
-  open(currentColor: string): Promise<string | null>;
-}
-
-interface LayerItemElement extends HTMLElement {
-  bind(layer: unknown, doc: unknown): void;
 }
 
 ((script, init) => {

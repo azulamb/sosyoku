@@ -11,7 +11,7 @@ export interface SettingsCategory {
   content: HTMLElement;
 }
 
-interface SettingsModalElement extends HTMLElement {
+export interface SettingsModalElement extends HTMLElement {
   open(title: string, categories: SettingsCategory[], initialCategoryId?: string): Promise<'save' | 'cancel'>;
 }
 

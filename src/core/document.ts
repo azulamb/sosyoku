@@ -20,6 +20,9 @@ export function nextGridId(): string {
 
 export const MAX_CANVAS_SIZE = 4096;
 
+/** ドキュメントの既定背景色(完全不透明の白)。#RRGGBBAA形式で保持する */
+export const DEFAULT_BACKGROUND_COLOR = '#ffffffff';
+
 export class SosyokuDocument extends EventTarget {
   readonly id: string;
   title: string;
@@ -27,16 +30,20 @@ export class SosyokuDocument extends EventTarget {
   height: number;
   layers: Layer[] = [];
   grids: GridSetting[] = [];
+  /** キャンバスの背景色(#RRGGBBAA)。アルファ値を持つ場合、表示上は市松模様に重ねて示すが、
+   * エクスポート時にはこの色をアルファ込みでレイヤーの下に合成する。 */
+  backgroundColor: string;
   activeLayerId: string | null = null;
   dirty = false;
   readonly history = new History();
 
-  constructor(init: { id?: string; title?: string; width: number; height: number }) {
+  constructor(init: { id?: string; title?: string; width: number; height: number; backgroundColor?: string }) {
     super();
     this.id = init.id ?? nextId('doc');
     this.title = init.title ?? '無題';
     this.width = Math.min(MAX_CANVAS_SIZE, init.width);
     this.height = Math.min(MAX_CANVAS_SIZE, init.height);
+    this.backgroundColor = init.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
   }
 
   get activeLayer(): Layer | null {

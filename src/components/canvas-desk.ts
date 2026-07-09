@@ -6,7 +6,7 @@
 */
 import { settingsStore } from '../core/settings-store.ts';
 
-interface CanvasDeskElement extends HTMLElement {
+export interface CanvasDeskElement extends HTMLElement {
   readonly zoom: number;
   setZoom(zoom: number): void;
 }

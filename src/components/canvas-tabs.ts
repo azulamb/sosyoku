@@ -13,7 +13,7 @@ export interface TabInfo {
   dirty: boolean;
 }
 
-interface CanvasTabsElement extends HTMLElement {
+export interface CanvasTabsElement extends HTMLElement {
   setTabs(tabs: TabInfo[], activeId: string | null): void;
 }
 

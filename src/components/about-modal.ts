@@ -4,7 +4,7 @@ Sosyokuについて。GitHubへのリンクを含む簡易モーダル(情報表
 */
 import { t } from '../i18n/index.ts';
 
-interface AboutModalElement extends HTMLElement {
+export interface AboutModalElement extends HTMLElement {
   open(): Promise<void>;
 }
 

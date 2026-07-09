@@ -50,6 +50,8 @@ export const ja = {
   'docsettings.title.label': 'タイトル',
   'docsettings.width.label': '幅(px、最大{max})',
   'docsettings.height.label': '高さ(px、最大{max})',
+  'docsettings.backgroundColor.label': '背景色',
+  'docsettings.backgroundColor.alpha': '不透明度',
   'docsettings.grid.add': '+ グリッドを追加',
   'docsettings.grid.remove': '削除',
 

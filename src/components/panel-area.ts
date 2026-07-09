@@ -2,7 +2,7 @@
 <panel-area>
 左右パネルのスロット。中身のパネル要素をプログラムから入れ替えられるようにする。
 */
-interface PanelAreaElement extends HTMLElement {
+export interface PanelAreaElement extends HTMLElement {
   setPanel(el: HTMLElement): void;
 }
 

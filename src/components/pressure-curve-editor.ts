@@ -8,7 +8,7 @@ import { t } from '../i18n/index.ts';
 import { DEFAULT_PRESSURE_CURVE } from '../core/pressure-curve.ts';
 import type { CurvePoint } from '../core/pressure-curve.ts';
 
-interface PressureCurveEditorElement extends HTMLElement {
+export interface PressureCurveEditorElement extends HTMLElement {
   getPoints(): CurvePoint[];
   setPoints(points: CurvePoint[]): void;
 }
