@@ -62,6 +62,8 @@ const REF_HANDLE_SIZE = 14;
     tagname,
     class extends HTMLElement implements DrawingCanvasElement {
       private canvas: HTMLCanvasElement;
+      private bgLayer: HTMLDivElement;
+      private outsideListenerTarget: HTMLElement | null = null;
       private engine: CanvasEngine | null = null;
       private doc: SosyokuDocument | null = null;
       private tool: ToolName = 'pen';
@@ -80,9 +82,13 @@ const REF_HANDLE_SIZE = 14;
       private moveLayer: NormalLayer | null = null;
       private moveFullBefore: ImageData | null = null;
       private moveRegion: Rect | null = null;
-      private moveContent: ImageData | null = null;
-      private moveOrigin: { x: number; y: number } | null = null;
-      private moveCurrentOffset = { dx: 0, dy: 0 };
+      private moveContentCanvas: OffscreenCanvas | null = null;
+      private moveDragOrigin: { x: number; y: number } | null = null;
+      // moveCommittedOffset: このフローティング移動セッション内で、確定済み(ドラッグが一段落した)オフセット。
+      // moveLiveOffset: 現在ドラッグ中も含めた最新のオフセット(オーバーレイの選択枠追従に使う)。
+      // 選択解除(新規選択・ツール切替・Escape・ドキュメント切替)まではレイヤー本体には確定(履歴登録)しない。
+      private moveCommittedOffset = { dx: 0, dy: 0 };
+      private moveLiveOffset = { dx: 0, dy: 0 };
 
       private refLayer: ReferenceLayer | null = null;
       private refDragMode: 'move' | 'resize' | null = null;
@@ -96,16 +102,24 @@ const REF_HANDLE_SIZE = 14;
         const style = document.createElement('style');
         style.textContent = `
           :host { display: block; }
+          .canvas-wrap { position: relative; display: inline-block; }
+          .bg-layer { position: absolute; inset: 0; z-index: 0; background-color: #ffffff; }
           canvas {
+            position: relative; z-index: 1;
             display: block;
-            background-color: #ffffff;
             image-rendering: pixelated;
             touch-action: none;
           }
         `;
         this.canvas = document.createElement('canvas');
+        const wrap = document.createElement('div');
+        wrap.className = 'canvas-wrap';
+        this.bgLayer = document.createElement('div');
+        this.bgLayer.className = 'bg-layer';
+        wrap.appendChild(this.bgLayer);
+        wrap.appendChild(this.canvas);
         shadow.appendChild(style);
-        shadow.appendChild(this.canvas);
+        shadow.appendChild(wrap);
         this.updateCursor();
 
         this.canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -115,11 +129,23 @@ const REF_HANDLE_SIZE = 14;
         globalThis.addEventListener('keydown', this.onKeyDown);
       }
 
+      connectedCallback() {
+        // 選択ツールがキャンバス外(canvas-deskの余白)からもドラッグ開始できるよう、
+        // 親要素(canvas-desk)側でも pointerdown を拾う。移動・終了は既存のcanvas側のリスナーが
+        // pointer capture 経由で処理する。disconnectedCallback時点ではparentElementがnullになるため
+        // 参照を保持しておく。
+        this.outsideListenerTarget = this.parentElement;
+        this.outsideListenerTarget?.addEventListener('pointerdown', this.onOutsidePointerDown);
+      }
+
       disconnectedCallback() {
         globalThis.removeEventListener('keydown', this.onKeyDown);
+        this.outsideListenerTarget?.removeEventListener('pointerdown', this.onOutsidePointerDown);
+        this.outsideListenerTarget = null;
       }
 
       setDocument(doc: SosyokuDocument) {
+        this.commitPendingMove();
         this.doc = doc;
         this.selection = null;
         this.canvas.width = doc.width;
@@ -131,6 +157,7 @@ const REF_HANDLE_SIZE = 14;
       }
 
       setTool(tool: ToolName) {
+        if (tool !== 'move') this.commitPendingMove();
         this.tool = tool;
         this.updateCursor();
         this.render();
@@ -162,14 +189,16 @@ const REF_HANDLE_SIZE = 14;
       setBackgroundColor(color: string) {
         const { r, g, b, a } = hexToRgba(color);
         if (a >= 1) {
-          this.canvas.style.backgroundImage = 'none';
-          this.canvas.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+          this.bgLayer.style.backgroundImage = 'none';
+          this.bgLayer.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
         } else {
-          this.canvas.style.backgroundColor = 'transparent';
-          this.canvas.style.backgroundImage =
+          this.bgLayer.style.backgroundColor = '#ffffff';
+          this.bgLayer.style.backgroundImage =
             `linear-gradient(rgba(${r}, ${g}, ${b}, ${a}), rgba(${r}, ${g}, ${b}, ${a})), ` +
-            `repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%)`;
-          this.canvas.style.backgroundSize = 'auto, 16px 16px';
+            `linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), ` +
+            `linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)`;
+          this.bgLayer.style.backgroundSize = 'auto, 16px 16px, 16px 16px';
+          this.bgLayer.style.backgroundPosition = '0 0, 0 0, 8px 8px';
         }
       }
 
@@ -188,12 +217,27 @@ const REF_HANDLE_SIZE = 14;
         const ctx = this.canvas.getContext('2d');
         if (!ctx || !this.doc) return;
 
-        if (this.selection && this.selection.w > 0 && this.selection.h > 0) {
+        // フローティング移動中(まだレイヤーに確定していない)は選択枠も現在位置に追従させる
+        const effectiveSelection = this.moveLayer && this.moveRegion
+          ? {
+            x: this.moveRegion.x + this.moveLiveOffset.dx,
+            y: this.moveRegion.y + this.moveLiveOffset.dy,
+            w: this.moveRegion.w,
+            h: this.moveRegion.h,
+          }
+          : this.selection;
+
+        if (effectiveSelection && effectiveSelection.w > 0 && effectiveSelection.h > 0) {
           ctx.save();
           ctx.strokeStyle = '#007acc';
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 4]);
-          ctx.strokeRect(this.selection.x + 0.5, this.selection.y + 0.5, this.selection.w - 1, this.selection.h - 1);
+          ctx.strokeRect(
+            effectiveSelection.x + 0.5,
+            effectiveSelection.y + 0.5,
+            effectiveSelection.w - 1,
+            effectiveSelection.h - 1,
+          );
           ctx.restore();
         }
 
@@ -222,7 +266,52 @@ const REF_HANDLE_SIZE = 14;
         return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
       }
 
+      /** 選択範囲をキャンバスの範囲内に収める(キャンバス外から/へドラッグされた場合でも安全に扱えるようにする) */
+      private clampRectToCanvas(rect: Rect): Rect {
+        const x0 = Math.max(0, Math.min(this.canvas.width, rect.x));
+        const y0 = Math.max(0, Math.min(this.canvas.height, rect.y));
+        const x1 = Math.max(0, Math.min(this.canvas.width, rect.x + rect.w));
+        const y1 = Math.max(0, Math.min(this.canvas.height, rect.y + rect.h));
+        return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+
+      /**
+       * 選択ツール使用時、キャンバスの外側(canvas-desk のパディング部分)からでも
+       * 選択範囲のドラッグを開始できるようにする。キャンバス内で始まった場合は
+       * 通常の onPointerDown が処理するのでここでは何もしない。
+       */
+      private onOutsidePointerDown = (e: PointerEvent) => {
+        if (this.tool !== 'select' || !this.doc) return;
+        const rect = this.canvas.getBoundingClientRect();
+        const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top &&
+          e.clientY <= rect.bottom;
+        if (inside) return;
+
+        this.canvas.setPointerCapture(e.pointerId);
+        const mode = this.gesture.down(e.pointerId, e.clientX, e.clientY);
+        if (mode !== 'draw') return;
+
+        this.commitPendingMove();
+        const point = this.toCanvasPoint(e);
+        this.selectStart = point;
+        this.selection = this.clampRectToCanvas({ x: Math.round(point.x), y: Math.round(point.y), w: 0, h: 0 });
+        this.render();
+      };
+
       private onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          const target = e.target as HTMLElement | null;
+          if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+            return;
+          }
+          if (!this.moveLayer && !this.selection) return;
+          this.commitPendingMove();
+          this.selection = null;
+          this.render();
+          e.preventDefault();
+          return;
+        }
+
         if (e.key !== 'Delete' && e.key !== 'Backspace') return;
         if (this.tool !== 'select' || !this.selection || this.selection.w < 1 || this.selection.h < 1) return;
         const target = e.target as HTMLElement | null;
@@ -249,8 +338,9 @@ const REF_HANDLE_SIZE = 14;
         const point = this.toCanvasPoint(e);
 
         if (this.tool === 'select') {
+          this.commitPendingMove();
           this.selectStart = point;
-          this.selection = { x: Math.round(point.x), y: Math.round(point.y), w: 0, h: 0 };
+          this.selection = this.clampRectToCanvas({ x: Math.round(point.x), y: Math.round(point.y), w: 0, h: 0 });
           this.render();
           return;
         }
@@ -298,7 +388,7 @@ const REF_HANDLE_SIZE = 14;
           const y = Math.min(this.selectStart.y, point.y);
           const w = Math.abs(point.x - this.selectStart.x);
           const h = Math.abs(point.y - this.selectStart.y);
-          this.selection = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+          this.selection = this.clampRectToCanvas({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
           this.render();
           return;
         }
@@ -366,16 +456,25 @@ const REF_HANDLE_SIZE = 14;
           return;
         }
 
-        const region: Rect = this.selection && this.selection.w > 0 && this.selection.h > 0
-          ? this.selection
-          : { x: 0, y: 0, w: layer.canvas.width, h: layer.canvas.height };
+        // 同じレイヤーへのフローティング移動が既に進行中ならそのまま継続する(選択解除まではレイヤーに
+        // 確定しない)。別レイヤーへの移動を新たに始める場合は、先に前のフローティング移動を確定する。
+        if (this.moveLayer !== layer) {
+          this.commitPendingMove();
+          const region: Rect = this.selection && this.selection.w > 0 && this.selection.h > 0
+            ? this.selection
+            : { x: 0, y: 0, w: layer.canvas.width, h: layer.canvas.height };
 
-        this.moveLayer = layer;
-        this.moveRegion = region;
-        this.moveFullBefore = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-        this.moveContent = cropImageData(this.moveFullBefore, region.x, region.y, region.w, region.h);
-        this.moveOrigin = point;
-        this.moveCurrentOffset = { dx: 0, dy: 0 };
+          this.moveLayer = layer;
+          this.moveRegion = region;
+          this.moveFullBefore = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
+          const content = cropImageData(this.moveFullBefore, region.x, region.y, region.w, region.h);
+          this.moveContentCanvas = new OffscreenCanvas(Math.max(1, region.w), Math.max(1, region.h));
+          const contentCtx = this.moveContentCanvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+          contentCtx.putImageData(content, 0, 0);
+          this.moveCommittedOffset = { dx: 0, dy: 0 };
+          this.moveLiveOffset = { dx: 0, dy: 0 };
+        }
+        this.moveDragOrigin = point;
       }
 
       private updateMove(point: { x: number; y: number }) {
@@ -400,15 +499,21 @@ const REF_HANDLE_SIZE = 14;
           return;
         }
 
-        if (this.moveLayer && this.moveFullBefore && this.moveRegion && this.moveContent && this.moveOrigin) {
-          const dx = Math.round(point.x - this.moveOrigin.x);
-          const dy = Math.round(point.y - this.moveOrigin.y);
+        if (
+          this.moveLayer && this.moveFullBefore && this.moveRegion && this.moveContentCanvas &&
+          this.moveDragOrigin
+        ) {
+          const dx = this.moveCommittedOffset.dx + Math.round(point.x - this.moveDragOrigin.x);
+          const dy = this.moveCommittedOffset.dy + Math.round(point.y - this.moveDragOrigin.y);
           const layer = this.moveLayer;
           const ctx = layer.ctx;
+          // 常にフローティング開始時の元画像から作り直すため、何度ドラッグし直しても劣化・重複しない。
+          // 貼り付けは putImageData ではなく drawImage(source-over)を使い、選択範囲の透明部分で
+          // 移動先の既存の描画を消してしまわないようにする。
           ctx.putImageData(this.moveFullBefore, 0, 0);
           ctx.clearRect(this.moveRegion.x, this.moveRegion.y, this.moveRegion.w, this.moveRegion.h);
-          ctx.putImageData(this.moveContent, this.moveRegion.x + dx, this.moveRegion.y + dy);
-          this.moveCurrentOffset = { dx, dy };
+          ctx.drawImage(this.moveContentCanvas, this.moveRegion.x + dx, this.moveRegion.y + dy);
+          this.moveLiveOffset = { dx, dy };
           this.render();
         }
       }
@@ -424,14 +529,17 @@ const REF_HANDLE_SIZE = 14;
           };
           const after = { x: layer.x, y: layer.y, w: layer.width, h: layer.height };
           if (before.x !== after.x || before.y !== after.y || before.w !== after.w || before.h !== after.h) {
+            this.doc?.markDirty();
             this.doc?.history.push({
               label: 'transform',
               undo: () => {
                 layer.setTransform(before.x, before.y, before.w, before.h);
+                this.doc?.markDirty();
                 this.render();
               },
               redo: () => {
                 layer.setTransform(after.x, after.y, after.w, after.h);
+                this.doc?.markDirty();
                 this.render();
               },
             });
@@ -442,28 +550,40 @@ const REF_HANDLE_SIZE = 14;
           return;
         }
 
-        if (this.moveLayer && this.moveFullBefore && this.moveRegion) {
-          const { dx, dy } = this.moveCurrentOffset;
-          if (dx !== 0 || dy !== 0) {
-            const layer = this.moveLayer;
-            const region = this.moveRegion;
-            const unionMinX = Math.max(0, Math.min(region.x, region.x + dx));
-            const unionMinY = Math.max(0, Math.min(region.y, region.y + dy));
-            const unionMaxX = Math.min(layer.canvas.width, Math.max(region.x + region.w, region.x + dx + region.w));
-            const unionMaxY = Math.min(layer.canvas.height, Math.max(region.y + region.h, region.y + dy + region.h));
-            const bbox: Rect = { x: unionMinX, y: unionMinY, w: unionMaxX - unionMinX, h: unionMaxY - unionMinY };
-            this.pushRegionCommand(layer, this.moveFullBefore, bbox, 'move');
-            if (this.selection) {
-              this.selection = { x: region.x + dx, y: region.y + dy, w: region.w, h: region.h };
-            }
-          }
-          this.moveLayer = null;
-          this.moveFullBefore = null;
-          this.moveRegion = null;
-          this.moveContent = null;
-          this.moveOrigin = null;
+        if (this.moveLayer) {
+          // このドラッグ分のオフセットを確定するが、レイヤー本体・履歴への反映は選択解除まで行わない
+          // (commitPendingMoveを参照)。フローティング状態のまま次のドラッグを継続できる。
+          this.moveCommittedOffset = this.moveLiveOffset;
+          this.moveDragOrigin = null;
         }
         this.updateCursor();
+      }
+
+      /** フローティング中の移動をレイヤーに確定し、履歴へ1つの操作として登録する */
+      private commitPendingMove() {
+        if (!this.moveLayer || !this.moveFullBefore || !this.moveRegion) return;
+        const layer = this.moveLayer;
+        const region = this.moveRegion;
+        const { dx, dy } = this.moveCommittedOffset;
+        if (dx !== 0 || dy !== 0) {
+          const unionMinX = Math.max(0, Math.min(region.x, region.x + dx));
+          const unionMinY = Math.max(0, Math.min(region.y, region.y + dy));
+          const unionMaxX = Math.min(layer.canvas.width, Math.max(region.x + region.w, region.x + dx + region.w));
+          const unionMaxY = Math.min(layer.canvas.height, Math.max(region.y + region.h, region.y + dy + region.h));
+          const bbox: Rect = { x: unionMinX, y: unionMinY, w: unionMaxX - unionMinX, h: unionMaxY - unionMinY };
+          this.pushRegionCommand(layer, this.moveFullBefore, bbox, 'move');
+          if (this.selection) {
+            this.selection = { x: region.x + dx, y: region.y + dy, w: region.w, h: region.h };
+          }
+        }
+        this.moveLayer = null;
+        this.moveFullBefore = null;
+        this.moveRegion = null;
+        this.moveContentCanvas = null;
+        this.moveDragOrigin = null;
+        this.moveCommittedOffset = { dx: 0, dy: 0 };
+        this.moveLiveOffset = { dx: 0, dy: 0 };
+        this.render();
       }
 
       private finishStroke() {
@@ -483,14 +603,19 @@ const REF_HANDLE_SIZE = 14;
       private pushRegionCommand(layer: NormalLayer, beforeFull: ImageData, bbox: Rect, label: string) {
         const before = cropImageData(beforeFull, bbox.x, bbox.y, bbox.w, bbox.h);
         const after = layer.ctx.getImageData(bbox.x, bbox.y, bbox.w, bbox.h);
+        // history.push()はChangeイベントを同期的に発火する(タブの●表示はそれを購読して即時反映される)ため、
+        // markDirty()は必ずpush()より前に呼び、イベント発火時点で最新のdirty状態が読めるようにする。
+        this.doc?.markDirty();
         this.doc?.history.push({
           label,
           undo: () => {
             layer.ctx.putImageData(before, bbox.x, bbox.y);
+            this.doc?.markDirty();
             this.render();
           },
           redo: () => {
             layer.ctx.putImageData(after, bbox.x, bbox.y);
+            this.doc?.markDirty();
             this.render();
           },
         });

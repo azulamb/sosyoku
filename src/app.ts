@@ -23,7 +23,16 @@ import type { TabInfo } from './components/canvas-tabs.ts';
 import { NormalLayer } from './core/layer.ts';
 import { importImageAsReferenceLayer, isImageFile, isSsxFile, loadSsx, saveSsx } from './core/ssx.ts';
 import { exportFlattenedPng } from './core/canvas-engine.ts';
-import { downloadBlob, pickFiles, setupDragAndDrop, setupFileHandling } from './core/file-io.ts';
+import {
+  downloadBlob,
+  type FilePickerAcceptType,
+  type FileSystemFileHandleLike,
+  pickFilesWithHandles,
+  saveToHandle,
+  setupDragAndDrop,
+  setupFileHandling,
+} from './core/file-io.ts';
+import type { PickedFile } from './core/file-io.ts';
 import { applyTheme, settingsStore } from './core/settings-store.ts';
 import { hexToRgb, rgbaToHex8 } from './core/color.ts';
 import type { PenSetting } from './core/settings-store.ts';
@@ -50,6 +59,8 @@ let canvasTabs: CanvasTabsElement | null;
 let gridVisible = false;
 let newDocCounter = 1;
 const openDocuments = new Map<string, SosyokuDocument>();
+/** ファイルを開いた際に取得できた書き込み可能なハンドル。保存時にあれば同じファイルへ上書きする */
+const fileHandles = new Map<string, FileSystemFileHandleLike>();
 
 // bootstrap()が生成・操作する全カスタム要素の定義完了を待つ。バンドラーによる
 // モジュール実行順の違い(esbuild/deno bundle間など)に依存しないようにするため、
@@ -179,7 +190,7 @@ function bootstrap() {
       e.preventDefault();
       doc.history.redo();
       drawingCanvas.render();
-    } else if (!mod && !e.altKey && e.key.toLowerCase() === 's') {
+    } else if (!e.altKey && e.key.toLowerCase() === 's') {
       e.preventDefault();
       void saveCurrentDocument();
     }
@@ -190,6 +201,7 @@ function bootstrap() {
   switchToDocument(initialDoc.id);
 
   document.addEventListener('sosyoku-open-request', () => void openFileDialog());
+  document.addEventListener('sosyoku-save-request', () => void saveCurrentDocument());
   document.addEventListener('sosyoku-export-request', () => void exportCurrentDocument());
   document.addEventListener('sosyoku-about-request', () => void aboutModal.open());
   document.addEventListener('sosyoku-document-settings-request', () => void openDocumentSettings(settingsModal));
@@ -321,6 +333,7 @@ function createNewDocument() {
 function closeTab(id: string) {
   if (!openDocuments.has(id)) return;
   openDocuments.delete(id);
+  fileHandles.delete(id);
   if (openDocuments.size === 0) {
     createNewDocument();
     return;
@@ -333,15 +346,16 @@ function closeTab(id: string) {
   }
 }
 
-async function handleIncomingFiles(files: File[]) {
-  const ssxFile = files.find(isSsxFile);
-  if (ssxFile) {
-    const opened = await loadSsx(ssxFile);
+async function handleIncomingFiles(files: PickedFile[]) {
+  const ssxPicked = files.find((f) => isSsxFile(f.file));
+  if (ssxPicked) {
+    const opened = await loadSsx(ssxPicked.file);
     registerDocument(opened);
+    if (ssxPicked.handle) fileHandles.set(opened.id, ssxPicked.handle);
     switchToDocument(opened.id);
     return;
   }
-  for (const file of files) {
+  for (const { file } of files) {
     if (!isImageFile(file)) continue;
     const layer = await importImageAsReferenceLayer(file, doc);
     doc.addLayer(layer, 0);
@@ -349,14 +363,27 @@ async function handleIncomingFiles(files: File[]) {
   }
 }
 
+const OPEN_FILE_TYPES: FilePickerAcceptType[] = [
+  { description: 'Sosyoku', accept: { 'application/zip': ['.ssx'] } },
+  { description: 'Image', accept: { 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'] } },
+];
+
 async function openFileDialog() {
-  const files = await pickFiles('.ssx,image/png,image/jpeg', true);
+  const files = await pickFilesWithHandles(OPEN_FILE_TYPES, true);
   if (files.length) await handleIncomingFiles(files);
 }
 
+/**
+ * 開いた際に書き込み可能なハンドルが取得できていれば同じファイルへ上書き保存し、
+ * そうでなければ(新規ドキュメントや非対応ブラウザ)従来通り新規ダウンロードする。
+ */
 async function saveCurrentDocument() {
   const blob = await saveSsx(doc);
-  downloadBlob(blob, `${doc.title || t('document.untitled')}.ssx`);
+  const handle = fileHandles.get(doc.id);
+  const overwritten = handle ? await saveToHandle(handle, blob) : false;
+  if (!overwritten) {
+    downloadBlob(blob, `${doc.title || t('document.untitled')}.ssx`);
+  }
   doc.dirty = false;
   refreshTabs();
 }
