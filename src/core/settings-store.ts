@@ -1,4 +1,5 @@
 import { type CurvePoint, DEFAULT_PRESSURE_CURVE } from './pressure-curve.ts';
+import { defaultShortcuts, type ShortcutActionId, type ShortcutBinding } from './shortcuts.ts';
 
 export const DEFAULT_PALETTE: string[] = [
   '#F5F8FF', // soft white
@@ -46,6 +47,7 @@ export interface AppSettings {
   pens: PenSetting[];
   pressureCurve: CurvePoint[];
   zoomWheelReversed: boolean;
+  shortcuts: Record<ShortcutActionId, ShortcutBinding>;
 }
 
 const STORAGE_KEY = 'sosyoku.settings.v1';
@@ -58,6 +60,7 @@ function defaults(): AppSettings {
     pens: DEFAULT_PENS.map((p) => ({ ...p })),
     pressureCurve: DEFAULT_PRESSURE_CURVE.map((p) => ({ ...p })),
     zoomWheelReversed: false,
+    shortcuts: defaultShortcuts(),
   };
 }
 

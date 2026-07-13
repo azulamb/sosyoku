@@ -59,6 +59,7 @@ export const ja = {
   'appsettings.category.general': '一般',
   'appsettings.category.palette': 'パレット',
   'appsettings.category.pressure': '筆圧',
+  'appsettings.category.shortcuts': 'ショートカット',
   'appsettings.language.label': '言語',
   'appsettings.language.auto': '自動(ブラウザに合わせる)',
   'appsettings.language.ja': '日本語',
@@ -92,6 +93,14 @@ export const ja = {
   'pen.shapeToggle': '形状を切り替え',
   'pen.size': 'サイズ(px)',
   'pen.delete': '削除',
+
+  'shortcut.deselect': '選択解除',
+  'shortcut.deleteSelection': '選択範囲を削除',
+  'shortcut.change': '変更',
+  'shortcut.reset': 'リセット',
+  'shortcut.resetAll': 'すべてリセット',
+  'shortcut.recording': 'キーを入力してください(Escapeでキャンセル)',
+  'shortcut.conflict': '「{action}」と重複しています',
 };
 
 export type TranslationKey = keyof typeof ja;

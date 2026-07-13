@@ -61,6 +61,7 @@ export const en: Record<TranslationKey, string> = {
   'appsettings.category.general': 'General',
   'appsettings.category.palette': 'Palette',
   'appsettings.category.pressure': 'Pressure',
+  'appsettings.category.shortcuts': 'Shortcuts',
   'appsettings.language.label': 'Language',
   'appsettings.language.auto': 'Auto (follow browser)',
   'appsettings.language.ja': '日本語',
@@ -94,4 +95,12 @@ export const en: Record<TranslationKey, string> = {
   'pen.shapeToggle': 'Toggle shape',
   'pen.size': 'Size (px)',
   'pen.delete': 'Delete',
+
+  'shortcut.deselect': 'Deselect',
+  'shortcut.deleteSelection': 'Delete Selection',
+  'shortcut.change': 'Change',
+  'shortcut.reset': 'Reset',
+  'shortcut.resetAll': 'Reset All',
+  'shortcut.recording': 'Press a key... (Escape to cancel)',
+  'shortcut.conflict': 'Conflicts with "{action}"',
 };

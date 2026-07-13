@@ -12,6 +12,8 @@ import type { BrushShape } from '../core/layer.ts';
 import { DEFAULT_PRESSURE_CURVE, evaluatePressureCurve } from '../core/pressure-curve.ts';
 import type { CurvePoint } from '../core/pressure-curve.ts';
 import { hexToRgba } from '../core/color.ts';
+import { matchesShortcut } from '../core/shortcuts.ts';
+import { settingsStore } from '../core/settings-store.ts';
 
 export type ToolName = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
 
@@ -299,7 +301,9 @@ const REF_HANDLE_SIZE = 14;
       };
 
       private onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
+        const shortcuts = settingsStore.get().shortcuts;
+
+        if (matchesShortcut(e, shortcuts, 'deselect')) {
           const target = e.target as HTMLElement | null;
           if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
             return;
@@ -312,7 +316,7 @@ const REF_HANDLE_SIZE = 14;
           return;
         }
 
-        if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+        if (!matchesShortcut(e, shortcuts, 'deleteSelection')) return;
         if (this.tool !== 'select' || !this.selection || this.selection.w < 1 || this.selection.h < 1) return;
         const target = e.target as HTMLElement | null;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;

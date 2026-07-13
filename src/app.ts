@@ -35,6 +35,7 @@ import {
 import type { PickedFile } from './core/file-io.ts';
 import { applyTheme, settingsStore } from './core/settings-store.ts';
 import { hexToRgb, rgbaToHex8 } from './core/color.ts';
+import { matchesShortcut } from './core/shortcuts.ts';
 import type { PenSetting } from './core/settings-store.ts';
 import { buildAppSettingsCategories, buildDocumentSettingsCategories } from './core/settings-forms.ts';
 import { t } from './i18n/index.ts';
@@ -181,16 +182,16 @@ function bootstrap() {
         target.isContentEditable);
     if (isTyping || document.querySelector('dialog[open]')) return;
 
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+    const shortcuts = settingsStore.get().shortcuts;
+    if (matchesShortcut(e, shortcuts, 'undo')) {
       e.preventDefault();
       doc.history.undo();
       drawingCanvas.render();
-    } else if (mod && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+    } else if (matchesShortcut(e, shortcuts, 'redo')) {
       e.preventDefault();
       doc.history.redo();
       drawingCanvas.render();
-    } else if (!e.altKey && e.key.toLowerCase() === 's') {
+    } else if (matchesShortcut(e, shortcuts, 'save')) {
       e.preventDefault();
       void saveCurrentDocument();
     }

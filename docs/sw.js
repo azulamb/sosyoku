@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sosyoku-0429bf6a51';
+const CACHE_NAME = 'sosyoku-acce39b9b1';
 const APP_SHELL = [
   './',
   './index.html',

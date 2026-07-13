@@ -5,6 +5,15 @@ import { downloadBlob, pickFiles } from './file-io.ts';
 import { t } from '../i18n/index.ts';
 import type { PressureCurveEditorElement } from '../components/pressure-curve-editor.ts';
 import { hexToRgba, rgbaToHex8, rgbToHex } from './color.ts';
+import {
+  bindingFromEvent,
+  bindingsEqual,
+  defaultShortcuts,
+  formatBinding,
+  SHORTCUT_DEFINITIONS,
+  type ShortcutActionId,
+  type ShortcutBinding,
+} from './shortcuts.ts';
 
 export interface EditableCategory {
   id: string;
@@ -294,6 +303,8 @@ export function buildAppSettingsCategories(): EditableCategory[] {
   curveEditor.setPoints(settings.pressureCurve);
   pressureContent.appendChild(curveEditor);
 
+  const shortcuts = buildShortcutsContent(settings.shortcuts);
+
   return [
     {
       id: 'general',
@@ -324,5 +335,121 @@ export function buildAppSettingsCategories(): EditableCategory[] {
         settingsStore.update({ pressureCurve: curveEditor.getPoints() });
       },
     },
+    {
+      id: 'shortcuts',
+      label: t('appsettings.category.shortcuts'),
+      content: shortcuts.content,
+      apply: () => {
+        settingsStore.update({ shortcuts: shortcuts.getShortcuts() });
+      },
+    },
   ];
+}
+
+/**
+ * ショートカット一覧の表示・変更・リセットを行うUIを組み立てる。
+ * 変更ボタンを押すと次のキー入力を捕捉してバインディングに変換する(Escapeでキャンセル、
+ * 他のアクションと重複する場合は反映せず警告を出す)。捕捉中は他のグローバルショートカット
+ * (元に戻す/やり直す/選択解除等)が誤発火しないよう、capture段階でイベントを止める。
+ */
+function buildShortcutsContent(
+  initial: Record<ShortcutActionId, ShortcutBinding>,
+): { content: HTMLElement; getShortcuts: () => Record<ShortcutActionId, ShortcutBinding> } {
+  const content = document.createElement('div');
+  let current: Record<ShortcutActionId, ShortcutBinding> = { ...initial };
+
+  const conflictMsg = document.createElement('div');
+  conflictMsg.style.cssText = 'color:var(--danger); font-size:12px; min-height:16px; margin-top:8px;';
+
+  let stopRecording: (() => void) | null = null;
+
+  const rows: { id: ShortcutActionId; keyEl: HTMLSpanElement }[] = [];
+  const refreshRow = (id: ShortcutActionId) => {
+    const row = rows.find((r) => r.id === id);
+    if (row) row.keyEl.textContent = formatBinding(current[id]);
+  };
+
+  for (const def of SHORTCUT_DEFINITIONS) {
+    const row = document.createElement('div');
+    row.style.cssText =
+      'display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);';
+
+    const label = document.createElement('span');
+    label.textContent = t(def.labelKey);
+    label.style.cssText = 'flex:1; font-size:13px;';
+
+    const keyEl = document.createElement('span');
+    keyEl.style.cssText =
+      'font-family:monospace; font-size:12px; padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:var(--bg); min-width:90px; text-align:center; flex:none;';
+    keyEl.textContent = formatBinding(current[def.id]);
+    rows.push({ id: def.id, keyEl });
+
+    const changeBtn = actionButton(t('shortcut.change'));
+    changeBtn.style.flex = 'none';
+    const resetBtn = actionButton(t('shortcut.reset'));
+    resetBtn.style.flex = 'none';
+
+    changeBtn.addEventListener('click', () => {
+      stopRecording?.();
+      conflictMsg.textContent = '';
+      keyEl.textContent = t('shortcut.recording');
+
+      const handler = (e: KeyboardEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.key === 'Escape') {
+          stopRecording?.();
+          return;
+        }
+        const binding = bindingFromEvent(e);
+        if (!binding) return;
+
+        const conflictDef = SHORTCUT_DEFINITIONS.find(
+          (d) => d.id !== def.id && bindingsEqual(current[d.id], binding),
+        );
+        if (conflictDef) {
+          conflictMsg.textContent = t('shortcut.conflict', { action: t(conflictDef.labelKey) });
+          stopRecording?.();
+          return;
+        }
+
+        current[def.id] = binding;
+        conflictMsg.textContent = '';
+        stopRecording?.();
+      };
+
+      globalThis.addEventListener('keydown', handler, true);
+      stopRecording = () => {
+        globalThis.removeEventListener('keydown', handler, true);
+        stopRecording = null;
+        refreshRow(def.id);
+      };
+    });
+
+    resetBtn.addEventListener('click', () => {
+      current[def.id] = { ...def.default };
+      conflictMsg.textContent = '';
+      refreshRow(def.id);
+    });
+
+    row.appendChild(label);
+    row.appendChild(keyEl);
+    row.appendChild(changeBtn);
+    row.appendChild(resetBtn);
+    content.appendChild(row);
+  }
+
+  const resetAllBtn = actionButton(t('shortcut.resetAll'));
+  resetAllBtn.style.marginTop = '10px';
+  resetAllBtn.addEventListener('click', () => {
+    stopRecording?.();
+    current = defaultShortcuts();
+    conflictMsg.textContent = '';
+    for (const row of rows) refreshRow(row.id);
+  });
+  content.appendChild(resetAllBtn);
+  content.appendChild(conflictMsg);
+
+  return { content, getShortcuts: () => current };
 }
