@@ -53,7 +53,7 @@ export interface MenuButtonElement extends HTMLElement {
         style.textContent = `
           :host { position: relative; display: inline-flex; }
           button {
-            width: 34px; height: 34px; border: none; color: inherit;
+            width: var(--menu-button-size, 34px); height: var(--menu-button-size, 34px); border: none; color: inherit;
             cursor: pointer; border-radius: 6px; padding: 0;
             background-color: transparent;
             display: flex; align-items: center; justify-content: center;

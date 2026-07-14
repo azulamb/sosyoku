@@ -43,6 +43,7 @@ export interface PenPanelElement extends HTMLElement {
             display:flex; align-items:center; justify-content:space-between;
             padding:8px; border-bottom:1px solid var(--border); font-size:12px; font-weight:600;
           }
+          .actions { display:flex; align-items:center; gap:4px; }
           .actions > button {
             width:26px; height:26px; border:none; background:transparent; color:inherit;
             font-size:14px; cursor:pointer; border-radius:4px;
@@ -64,6 +65,8 @@ export interface PenPanelElement extends HTMLElement {
 
         const ioMenu = document.createElement('menu-button') as unknown as MenuButtonElement;
         ioMenu.setAttribute('aria-label', t('panel.pens.io'));
+        // レイヤーパネルのヘッダーと高さを揃えるため、他のアクションボタン(26px)に合わせる
+        ioMenu.style.setProperty('--menu-button-size', '26px');
 
         const ioIcon = createIcon('more_vert', 18);
         ioIcon.slot = 'icon';
