@@ -24,6 +24,7 @@ const ICON_NAMES = [
   'redo',
   'save',
   'square',
+  'touch_app',
   'undo',
   'visibility',
   'visibility_off',
