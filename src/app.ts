@@ -136,8 +136,10 @@ function bootstrap() {
   });
   drawingCanvas.setBrush({ radius: 3, shape: 'round' });
   drawingCanvas.setPressureCurve(settingsStore.get().pressureCurve);
+  drawingCanvas.setTouchDrawingDisabled(settingsStore.get().touchDrawingDisabled);
 
   toolBar = document.querySelector('tool-bar') as unknown as ToolBarElement | null;
+  toolBar?.setTouchDrawingDisabled(settingsStore.get().touchDrawingDisabled);
   toolBar?.addEventListener('tool-change', (e) => {
     drawingCanvas.setTool((e as CustomEvent<{ tool: ToolBarTool }>).detail.tool);
   });
@@ -153,6 +155,11 @@ function bootstrap() {
     gridVisible = !gridVisible;
     drawingCanvas.setGridVisible(gridVisible);
     toolBar?.setGridActive(gridVisible);
+  });
+  toolBar?.addEventListener('touch-drawing-toggle', (e) => {
+    const { disabled } = (e as CustomEvent<{ disabled: boolean }>).detail;
+    drawingCanvas.setTouchDrawingDisabled(disabled);
+    settingsStore.update({ touchDrawingDisabled: disabled });
   });
   toolBar?.addEventListener('save', () => void saveCurrentDocument());
 

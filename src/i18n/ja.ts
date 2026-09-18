@@ -11,6 +11,7 @@ export const ja = {
   'tool.redo': 'やり直す',
   'tool.save': '保存',
   'tool.grid': 'グリッド表示切替',
+  'tool.touchDrawingDisabled': 'タッチ描画を無効化',
   'tool.pen': 'ペン',
   'tool.fill': '塗りつぶし',
   'tool.eraser': '消しゴム',

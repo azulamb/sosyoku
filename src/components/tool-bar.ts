@@ -14,6 +14,7 @@ export interface ToolBarElement extends HTMLElement {
   setActiveTool(tool: ToolBarTool): void;
   setUndoRedoEnabled(canUndo: boolean, canRedo: boolean): void;
   setGridActive(active: boolean): void;
+  setTouchDrawingDisabled(disabled: boolean): void;
 }
 
 ((script, init) => {
@@ -35,6 +36,7 @@ export interface ToolBarElement extends HTMLElement {
       private undoBtn: ToolButtonElement;
       private redoBtn: ToolButtonElement;
       private gridBtn: ToolButtonElement;
+      private touchDrawingBtn: ToolButtonElement;
 
       constructor() {
         super();
@@ -59,6 +61,7 @@ export interface ToolBarElement extends HTMLElement {
         this.redoBtn = makeButton('tool.redo', 'redo');
         const saveBtn = makeButton('tool.save', 'save');
         this.gridBtn = makeButton('tool.grid', 'grid_on');
+        this.touchDrawingBtn = makeButton('tool.touchDrawingDisabled', 'touch_app');
 
         const penBtn = makeButton('tool.pen', 'draw');
         const fillBtn = makeButton('tool.fill', 'format_color_fill');
@@ -86,6 +89,7 @@ export interface ToolBarElement extends HTMLElement {
         shadow.appendChild(sep1);
         shadow.appendChild(saveBtn);
         shadow.appendChild(this.gridBtn);
+        shadow.appendChild(this.touchDrawingBtn);
         shadow.appendChild(sep2);
         for (const btn of this.toolButtons.values()) shadow.appendChild(btn);
 
@@ -93,6 +97,16 @@ export interface ToolBarElement extends HTMLElement {
         this.redoBtn.addEventListener('tool-click', () => this.dispatchEvent(new CustomEvent('redo')));
         saveBtn.addEventListener('tool-click', () => this.dispatchEvent(new CustomEvent('save')));
         this.gridBtn.addEventListener('tool-click', () => this.dispatchEvent(new CustomEvent('grid-toggle')));
+        this.touchDrawingBtn.addEventListener('tool-click', () => {
+          this.setTouchDrawingDisabled(!this.touchDrawingBtn.active);
+          this.dispatchEvent(
+            new CustomEvent('touch-drawing-toggle', {
+              detail: { disabled: this.touchDrawingBtn.active },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        });
 
         for (const [tool, btn] of this.toolButtons) {
           btn.addEventListener('tool-click', () => {
@@ -115,6 +129,10 @@ export interface ToolBarElement extends HTMLElement {
 
       setGridActive(active: boolean) {
         this.gridBtn.active = active;
+      }
+
+      setTouchDrawingDisabled(disabled: boolean) {
+        this.touchDrawingBtn.active = disabled;
       }
     },
   );

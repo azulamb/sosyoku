@@ -10,9 +10,15 @@
     "build:sw-version": "deno run -A scripts/gen-sw-version.ts",
     "build:icons": "deno run -A scripts/gen-icons.ts",
     "build:font-icons": "deno run -A scripts/gen-material-symbols.ts",
+    "build:windows:light": {
+      "command": "deno desktop --no-check --backend webview --engine quickjs --compress=xz --allow-read=docs --include docs --target x86_64-pc-windows-msvc --output dist/Sosyoku desktop.ts",
+      "dependencies": [
+        "build"
+      ]
+    },
     "serve": "deno run -A scripts/serve.ts",
     "check": "deno check src/app.ts",
-    "fmt": "deno fmt src scripts"
+    "fmt": "deno fmt src scripts desktop.ts"
   },
   "imports": {
     "@azulamb/zipper": "jsr:@azulamb/zipper",

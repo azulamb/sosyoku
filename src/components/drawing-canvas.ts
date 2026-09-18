@@ -41,6 +41,7 @@ export interface DrawingCanvasElement extends HTMLElement {
   setTool(tool: ToolName): void;
   setBrush(brush: BrushSetting): void;
   setPressureCurve(points: CurvePoint[]): void;
+  setTouchDrawingDisabled(disabled: boolean): void;
   setGridVisible(visible: boolean): void;
   setBackgroundColor(color: string): void;
   render(): void;
@@ -71,6 +72,7 @@ const REF_HANDLE_SIZE = 14;
       private tool: ToolName = 'pen';
       private brush: BrushSetting = { radius: 3, shape: 'round' };
       private pressureCurve: CurvePoint[] = DEFAULT_PRESSURE_CURVE;
+      private touchDrawingDisabled = false;
       private gesture = new GestureController();
 
       private strokeLayer: NormalLayer | null = null;
@@ -182,6 +184,11 @@ const REF_HANDLE_SIZE = 14;
 
       setPressureCurve(points: CurvePoint[]) {
         this.pressureCurve = points;
+      }
+
+      setTouchDrawingDisabled(disabled: boolean) {
+        this.touchDrawingDisabled = disabled;
+        if (disabled) this.finishStroke();
       }
 
       /**
@@ -336,6 +343,7 @@ const REF_HANDLE_SIZE = 14;
         this.canvas.setPointerCapture(e.pointerId);
         const mode = this.gesture.down(e.pointerId, e.clientX, e.clientY);
         if (mode !== 'draw') return;
+        if (this.shouldIgnoreDrawPointer(e)) return;
 
         const doc = this.doc;
         if (!doc) return;
@@ -384,6 +392,7 @@ const REF_HANDLE_SIZE = 14;
           this.dispatchEvent(new CustomEvent('pan-zoom', { detail: result, bubbles: true, composed: true }));
           return;
         }
+        if (this.shouldIgnoreDrawPointer(e)) return;
 
         const point = this.toCanvasPoint(e);
 
@@ -392,7 +401,12 @@ const REF_HANDLE_SIZE = 14;
           const y = Math.min(this.selectStart.y, point.y);
           const w = Math.abs(point.x - this.selectStart.x);
           const h = Math.abs(point.y - this.selectStart.y);
-          this.selection = this.clampRectToCanvas({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+          this.selection = this.clampRectToCanvas({
+            x: Math.round(x),
+            y: Math.round(y),
+            w: Math.round(w),
+            h: Math.round(h),
+          });
           this.render();
           return;
         }
@@ -439,6 +453,10 @@ const REF_HANDLE_SIZE = 14;
 
         this.finishStroke();
       };
+
+      private shouldIgnoreDrawPointer(e: PointerEvent): boolean {
+        return this.touchDrawingDisabled && e.pointerType === 'touch';
+      }
 
       private beginMove(doc: SosyokuDocument, point: { x: number; y: number }) {
         const layer = doc.activeLayer;

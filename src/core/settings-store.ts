@@ -47,6 +47,7 @@ export interface AppSettings {
   pens: PenSetting[];
   pressureCurve: CurvePoint[];
   zoomWheelReversed: boolean;
+  touchDrawingDisabled: boolean;
   shortcuts: Record<ShortcutActionId, ShortcutBinding>;
 }
 
@@ -60,6 +61,7 @@ function defaults(): AppSettings {
     pens: DEFAULT_PENS.map((p) => ({ ...p })),
     pressureCurve: DEFAULT_PRESSURE_CURVE.map((p) => ({ ...p })),
     zoomWheelReversed: false,
+    touchDrawingDisabled: false,
     shortcuts: defaultShortcuts(),
   };
 }

@@ -13,6 +13,7 @@ export const en: Record<TranslationKey, string> = {
   'tool.redo': 'Redo',
   'tool.save': 'Save',
   'tool.grid': 'Toggle Grid',
+  'tool.touchDrawingDisabled': 'Disable Touch Drawing',
   'tool.pen': 'Pen',
   'tool.fill': 'Fill',
   'tool.eraser': 'Eraser',
