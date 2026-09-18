@@ -41,6 +41,11 @@ export const ja = {
   'dialog.close': '閉じる',
 
   'colorpicker.title': '色を選択',
+  'layer.add.title': 'レイヤーを追加',
+  'layer.add.colorTab': '色を選択',
+  'layer.add.fileTab': 'ファイルを選択',
+  'layer.add.noFile': 'PNG / JPEG',
+  'layer.add.action': '追加',
   'rename.layer.title': 'レイヤー名を変更',
   'rename.pen.title': 'ペン名を変更',
   'rename.document.title': 'ドキュメント名を変更',

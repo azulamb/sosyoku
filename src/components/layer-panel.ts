@@ -4,9 +4,10 @@
 */
 import type { SosyokuDocument } from '../core/document.ts';
 import { NormalLayer } from '../core/layer.ts';
+import { importImageAsReferenceLayer } from '../core/ssx.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
-import type { ColorPickerModalElement } from './color-picker-modal.ts';
+import type { LayerAddModalElement } from './layer-add-modal.ts';
 import type { LayerItemElement } from './layer-item.ts';
 
 export interface LayerPanelElement extends HTMLElement {
@@ -125,16 +126,18 @@ export interface LayerPanelElement extends HTMLElement {
 
       private async addLayer() {
         if (!this.doc) return;
-        const picker = document.querySelector('color-picker-modal') as ColorPickerModalElement | null;
+        const picker = document.querySelector('layer-add-modal') as LayerAddModalElement | null;
         const defaultColor = '#141820';
-        const color = picker ? await picker.open(defaultColor) : defaultColor;
-        if (!color) return;
-        const layer = new NormalLayer({
-          name: t('layer.defaultName', { n: this.doc.layers.length + 1 }),
-          width: this.doc.width,
-          height: this.doc.height,
-          color,
-        });
+        const choice = picker ? await picker.open(defaultColor) : { type: 'normal' as const, color: defaultColor };
+        if (!choice) return;
+        const layer = choice.type === 'reference'
+          ? await importImageAsReferenceLayer(choice.file, this.doc)
+          : new NormalLayer({
+            name: t('layer.defaultName', { n: this.doc.layers.length + 1 }),
+            width: this.doc.width,
+            height: this.doc.height,
+            color: choice.color,
+          });
         this.doc.addLayer(layer, 0);
         this.notifyRender();
       }

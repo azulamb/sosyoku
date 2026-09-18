@@ -43,6 +43,11 @@ export const en: Record<TranslationKey, string> = {
   'dialog.close': 'Close',
 
   'colorpicker.title': 'Choose Color',
+  'layer.add.title': 'Add Layer',
+  'layer.add.colorTab': 'Choose Color',
+  'layer.add.fileTab': 'Choose File',
+  'layer.add.noFile': 'PNG / JPEG',
+  'layer.add.action': 'Add',
   'rename.layer.title': 'Rename Layer',
   'rename.pen.title': 'Rename Pen',
   'rename.document.title': 'Rename Document',

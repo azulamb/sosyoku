@@ -9,6 +9,7 @@ import './components/drawing-canvas.ts';
 import './components/layer-item.ts';
 import './components/layer-panel.ts';
 import './components/color-picker-modal.ts';
+import './components/layer-add-modal.ts';
 import './components/settings-modal.ts';
 import './components/about-modal.ts';
 import './components/pen-item.ts';
@@ -36,12 +37,10 @@ import type { PickedFile } from './core/file-io.ts';
 import { applyTheme, settingsStore } from './core/settings-store.ts';
 import { hexToRgb, rgbaToHex8 } from './core/color.ts';
 import { matchesShortcut } from './core/shortcuts.ts';
-import type { PenSetting } from './core/settings-store.ts';
 import { buildAppSettingsCategories, buildDocumentSettingsCategories } from './core/settings-forms.ts';
 import { t } from './i18n/index.ts';
 import type { ToolBarElement, ToolBarTool } from './components/tool-bar.ts';
-import type { BrushSetting, DrawingCanvasElement, ToolName } from './components/drawing-canvas.ts';
-import type { CurvePoint } from './core/pressure-curve.ts';
+import type { DrawingCanvasElement } from './components/drawing-canvas.ts';
 import type { LayerPanelElement } from './components/layer-panel.ts';
 import type { PanelAreaElement } from './components/panel-area.ts';
 import type { PenPanelElement } from './components/pen-panel.ts';
@@ -78,6 +77,7 @@ const REQUIRED_ELEMENTS = [
   'layer-item',
   'layer-panel',
   'color-picker-modal',
+  'layer-add-modal',
   'settings-modal',
   'about-modal',
   'pen-item',
@@ -100,6 +100,9 @@ function bootstrap() {
 
   const colorPicker = document.createElement('color-picker-modal');
   document.body.appendChild(colorPicker);
+
+  const layerAddModal = document.createElement('layer-add-modal');
+  document.body.appendChild(layerAddModal);
 
   const settingsModal = document.createElement('settings-modal') as unknown as SettingsModalElement;
   document.body.appendChild(settingsModal);
