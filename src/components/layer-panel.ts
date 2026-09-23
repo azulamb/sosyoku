@@ -34,6 +34,7 @@ export interface LayerPanelElement extends HTMLElement {
       private doc: SosyokuDocument | null = null;
       private list: HTMLDivElement;
       private renderCallback: (() => void) | null = null;
+      private previewFrame: number | null = null;
 
       constructor() {
         super();
@@ -91,7 +92,6 @@ export interface LayerPanelElement extends HTMLElement {
         delBtn.addEventListener('click', () => this.deleteActiveLayer());
 
         this.list.addEventListener('layer-selected', () => this.renderList());
-        this.list.addEventListener('layer-preview', () => this.renderCallback?.());
         this.list.addEventListener('layer-changed', () => this.notifyRender());
         this.list.addEventListener('layer-reorder', (e) => {
           const { id, toIndex } = (e as CustomEvent).detail;
@@ -126,12 +126,20 @@ export interface LayerPanelElement extends HTMLElement {
         this.renderCallback?.();
       }
 
+      private schedulePreviewRender() {
+        if (this.previewFrame !== null) return;
+        this.previewFrame = requestAnimationFrame(() => {
+          this.previewFrame = null;
+          this.renderCallback?.();
+        });
+      }
+
       private renderList() {
         if (!this.doc) return;
         this.list.innerHTML = '';
         for (const layer of this.doc.layers) {
           const item = document.createElement('layer-item') as LayerItemElement;
-          item.bind(layer, this.doc);
+          item.bind(layer, this.doc, () => this.schedulePreviewRender());
           this.list.appendChild(item);
         }
       }

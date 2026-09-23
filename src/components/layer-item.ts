@@ -11,7 +11,7 @@ import { createIcon } from '../core/icon.ts';
 import type { ColorPickerModalElement } from './color-picker-modal.ts';
 
 export interface LayerItemElement extends HTMLElement {
-  bind(layer: Layer, doc: SosyokuDocument): void;
+  bind(layer: Layer, doc: SosyokuDocument, previewCallback?: () => void): void;
 }
 
 ((script, init) => {
@@ -31,6 +31,7 @@ export interface LayerItemElement extends HTMLElement {
     class extends HTMLElement implements LayerItemElement {
       private layer: Layer | null = null;
       private doc: SosyokuDocument | null = null;
+      private previewCallback: (() => void) | null = null;
 
       private root: HTMLDivElement;
       private handle: HTMLDivElement;
@@ -137,9 +138,10 @@ export interface LayerItemElement extends HTMLElement {
         this.handle.addEventListener('pointerdown', (e) => this.startReorder(e));
       }
 
-      bind(layer: Layer, doc: SosyokuDocument) {
+      bind(layer: Layer, doc: SosyokuDocument, previewCallback?: () => void) {
         this.layer = layer;
         this.doc = doc;
+        this.previewCallback = previewCallback ?? null;
         this.refresh();
       }
 
@@ -208,7 +210,7 @@ export interface LayerItemElement extends HTMLElement {
           if (!this.layer || this.layer.type !== 'normal') return;
           this.layer.setColor(nextColor);
           this.refresh();
-          this.dispatchEvent(new CustomEvent('layer-preview', { bubbles: true, composed: true }));
+          this.previewCallback?.();
         };
         const color = await picker.open(originalColor, preview);
         if (color && this.layer.type === 'normal') {
@@ -219,7 +221,7 @@ export interface LayerItemElement extends HTMLElement {
         } else if (this.layer.type === 'normal') {
           this.layer.setColor(originalColor);
           this.refresh();
-          this.dispatchEvent(new CustomEvent('layer-preview', { bubbles: true, composed: true }));
+          this.previewCallback?.();
         }
       }
 

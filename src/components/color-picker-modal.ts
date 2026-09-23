@@ -1,6 +1,7 @@
 /* <color-picker-modal> Detailed HSV and HEX color editor with live preview. */
 import { hexToRgb, hsvToRgb, rgbToHex, rgbToHsv } from '../core/color.ts';
 import { showBlockingDialog } from '../core/dialog.ts';
+import { settingsStore } from '../core/settings-store.ts';
 import { t } from '../i18n/index.ts';
 
 export interface ColorPickerModalElement extends HTMLElement {
@@ -80,8 +81,32 @@ export interface ColorPickerModalElement extends HTMLElement {
           'display:grid;grid-template-columns:48px 1fr;align-items:center;gap:10px;margin-top:14px;';
         const preview = document.createElement('div');
         preview.style.cssText = 'width:48px;height:36px;border:1px solid var(--border);border-radius:4px;';
+        const palette = document.createElement('div');
+        palette.style.cssText =
+          'display:grid;grid-template-columns:repeat(auto-fill,24px);justify-content:start;gap:5px;min-width:0;';
+        const paletteButtons: HTMLButtonElement[] = [];
+        for (const color of settingsStore.get().palette) {
+          const swatch = document.createElement('button');
+          swatch.type = 'button';
+          swatch.dataset.color = color;
+          swatch.title = color;
+          swatch.setAttribute('aria-label', color);
+          swatch.style.cssText =
+            `width:24px;height:24px;padding:0;border:1px solid var(--border);border-radius:4px;background:${color};cursor:pointer;`;
+          swatch.addEventListener('click', () => {
+            const [r, g, b] = hexToRgb(color);
+            ({ h, s, v } = rgbToHsv(r, g, b));
+            updateUi(true);
+          });
+          paletteButtons.push(swatch);
+          palette.appendChild(swatch);
+        }
+        valueRow.appendChild(preview);
+        valueRow.appendChild(palette);
+
         const hexWrap = document.createElement('label');
-        hexWrap.style.cssText = 'display:grid;grid-template-columns:auto 1fr;align-items:center;gap:8px;';
+        hexWrap.style.cssText =
+          'display:grid;grid-template-columns:48px 1fr;align-items:center;gap:10px;margin-top:12px;';
         const hexLabel = document.createElement('span');
         hexLabel.textContent = 'HEX';
         hexLabel.style.color = 'var(--text-muted)';
@@ -93,8 +118,6 @@ export interface ColorPickerModalElement extends HTMLElement {
           'width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:inherit;font-family:monospace;';
         hexWrap.appendChild(hexLabel);
         hexWrap.appendChild(hexInput);
-        valueRow.appendChild(preview);
-        valueRow.appendChild(hexWrap);
 
         const updateUi = (notify: boolean) => {
           const [r, g, b] = hsvToRgb(h, s, v);
@@ -107,6 +130,11 @@ export interface ColorPickerModalElement extends HTMLElement {
           hueValue.textContent = `${Math.round(h)}°`;
           preview.style.background = selected;
           hexInput.value = selected.toUpperCase();
+          for (const swatch of paletteButtons) {
+            const active = swatch.dataset.color?.toLowerCase() === selected.toLowerCase();
+            swatch.style.outline = active ? '2px solid var(--accent)' : 'none';
+            swatch.style.outlineOffset = active ? '1px' : '0';
+          }
           if (notify) onPreview?.(selected);
         };
 
@@ -153,6 +181,7 @@ export interface ColorPickerModalElement extends HTMLElement {
         content.appendChild(field);
         content.appendChild(hueRow);
         content.appendChild(valueRow);
+        content.appendChild(hexWrap);
         updateUi(false);
 
         const result = await showBlockingDialog({ title: t('colorpicker.customTitle'), content });
