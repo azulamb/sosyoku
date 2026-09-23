@@ -12,6 +12,7 @@ import type { MenuButtonElement } from './menu-button.ts';
 
 export interface PenPanelElement extends HTMLElement {
   setActiveChangeCallback(cb: (pen: PenSetting) => void): void;
+  selectRelative(offset: number): void;
 }
 
 ((script, init) => {
@@ -135,6 +136,17 @@ export interface PenPanelElement extends HTMLElement {
         this.onActiveChange = cb;
         const pen = settingsStore.get().pens.find((p) => p.id === this.activePenId);
         if (pen) cb(pen);
+      }
+
+      selectRelative(offset: number) {
+        const pens = settingsStore.get().pens;
+        if (!pens.length) return;
+        const currentIndex = Math.max(0, pens.findIndex((pen) => pen.id === this.activePenId));
+        const nextIndex = (currentIndex + offset % pens.length + pens.length) % pens.length;
+        const pen = pens[nextIndex];
+        this.activePenId = pen.id;
+        this.renderList();
+        this.onActiveChange?.(pen);
       }
 
       private renderList() {

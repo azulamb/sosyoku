@@ -36,7 +36,13 @@ import {
 import type { PickedFile } from './core/file-io.ts';
 import { applyTheme, settingsStore } from './core/settings-store.ts';
 import { hexToRgb, rgbaToHex8 } from './core/color.ts';
-import { matchesShortcut } from './core/shortcuts.ts';
+import {
+  bindingsEqual,
+  findKeyboardShortcutAction,
+  gamepadBindingToken,
+  readActiveGamepadBindings,
+  type ShortcutActionId,
+} from './core/shortcuts.ts';
 import { buildAppSettingsCategories, buildDocumentSettingsCategories } from './core/settings-forms.ts';
 import { t } from './i18n/index.ts';
 import type { ToolBarElement, ToolBarTool } from './components/tool-bar.ts';
@@ -54,10 +60,13 @@ let doc: SosyokuDocument;
 let drawingCanvas: DrawingCanvasElement;
 let toolBar: ToolBarElement | null;
 let layerPanel: LayerPanelElement;
+let penPanel: PenPanelElement;
 let statusBar: StatusBarElement | null;
 let canvasTabs: CanvasTabsElement | null;
 let gridVisible = false;
+let activeTool: ToolBarTool = 'pen';
 let newDocCounter = 1;
+const TOOL_ORDER: ToolBarTool[] = ['pen', 'fill', 'eraser', 'select', 'move'];
 const openDocuments = new Map<string, SosyokuDocument>();
 /** ファイルを開いた際に取得できた書き込み可能なハンドル。保存時にあれば同じファイルへ上書きする */
 const fileHandles = new Map<string, FileSystemFileHandleLike>();
@@ -144,7 +153,7 @@ function bootstrap() {
   toolBar = document.querySelector('tool-bar') as unknown as ToolBarElement | null;
   toolBar?.setTouchDrawingDisabled(settingsStore.get().touchDrawingDisabled);
   toolBar?.addEventListener('tool-change', (e) => {
-    drawingCanvas.setTool((e as CustomEvent<{ tool: ToolBarTool }>).detail.tool);
+    activateTool((e as CustomEvent<{ tool: ToolBarTool }>).detail.tool);
   });
   toolBar?.addEventListener('undo', () => {
     doc.history.undo();
@@ -155,14 +164,11 @@ function bootstrap() {
     drawingCanvas.render();
   });
   toolBar?.addEventListener('grid-toggle', () => {
-    gridVisible = !gridVisible;
-    drawingCanvas.setGridVisible(gridVisible);
-    toolBar?.setGridActive(gridVisible);
+    toggleGrid();
   });
   toolBar?.addEventListener('touch-drawing-toggle', (e) => {
     const { disabled } = (e as CustomEvent<{ disabled: boolean }>).detail;
-    drawingCanvas.setTouchDrawingDisabled(disabled);
-    settingsStore.update({ touchDrawingDisabled: disabled });
+    setTouchDrawingDisabled(disabled);
   });
   toolBar?.addEventListener('save', () => void saveCurrentDocument());
 
@@ -172,7 +178,7 @@ function bootstrap() {
   const panelLeft = document.getElementById('panel-left') as unknown as PanelAreaElement | null;
   panelLeft?.setPanel(layerPanel);
 
-  const penPanel = document.createElement('pen-panel') as unknown as PenPanelElement;
+  penPanel = document.createElement('pen-panel') as unknown as PenPanelElement;
   penPanel.setActiveChangeCallback((pen) => {
     drawingCanvas.setBrush({ radius: pen.size / 2, shape: pen.shape });
   });
@@ -192,24 +198,16 @@ function bootstrap() {
         target.isContentEditable);
     if (isTyping || document.querySelector('dialog[open]')) return;
 
-    const shortcuts = settingsStore.get().shortcuts;
-    if (matchesShortcut(e, shortcuts, 'undo')) {
-      e.preventDefault();
-      doc.history.undo();
-      drawingCanvas.render();
-    } else if (matchesShortcut(e, shortcuts, 'redo')) {
-      e.preventDefault();
-      doc.history.redo();
-      drawingCanvas.render();
-    } else if (matchesShortcut(e, shortcuts, 'save')) {
-      e.preventDefault();
-      void saveCurrentDocument();
-    }
+    const action = findKeyboardShortcutAction(e, settingsStore.get().shortcuts);
+    if (!action || action === 'deselect' || action === 'deleteSelection') return;
+    e.preventDefault();
+    runShortcutAction(action);
   });
 
   const initialDoc = createDocument(t('document.untitled'));
   registerDocument(initialDoc);
   switchToDocument(initialDoc.id);
+  startGamepadShortcuts();
 
   document.addEventListener('sosyoku-open-request', () => void openFileDialog());
   document.addEventListener('sosyoku-save-request', () => void saveCurrentDocument());
@@ -220,6 +218,109 @@ function bootstrap() {
   document.addEventListener('sosyoku-install-request', () => void promptPwaInstall());
 
   setupFileHandling((files) => void handleIncomingFiles(files));
+}
+
+function activateTool(tool: ToolBarTool) {
+  activeTool = tool;
+  drawingCanvas.setTool(tool);
+  toolBar?.setActiveTool(tool);
+}
+
+function cycleTool(offset: number) {
+  const currentIndex = Math.max(0, TOOL_ORDER.indexOf(activeTool));
+  const nextIndex = (currentIndex + offset % TOOL_ORDER.length + TOOL_ORDER.length) % TOOL_ORDER.length;
+  activateTool(TOOL_ORDER[nextIndex]);
+}
+
+function toggleGrid() {
+  gridVisible = !gridVisible;
+  drawingCanvas.setGridVisible(gridVisible);
+  toolBar?.setGridActive(gridVisible);
+}
+
+function setTouchDrawingDisabled(disabled: boolean) {
+  drawingCanvas.setTouchDrawingDisabled(disabled);
+  toolBar?.setTouchDrawingDisabled(disabled);
+  settingsStore.update({ touchDrawingDisabled: disabled });
+}
+
+function runShortcutAction(action: ShortcutActionId) {
+  switch (action) {
+    case 'undo':
+      doc.history.undo();
+      drawingCanvas.render();
+      break;
+    case 'redo':
+      doc.history.redo();
+      drawingCanvas.render();
+      break;
+    case 'save':
+      void saveCurrentDocument();
+      break;
+    case 'deselect':
+    case 'deleteSelection':
+      drawingCanvas.runShortcutAction(action);
+      break;
+    case 'penPrevious':
+      penPanel.selectRelative(-1);
+      break;
+    case 'penNext':
+      penPanel.selectRelative(1);
+      break;
+    case 'layerUp':
+      layerPanel.selectRelative(-1);
+      break;
+    case 'layerDown':
+      layerPanel.selectRelative(1);
+      break;
+    case 'toolPen':
+      activateTool('pen');
+      break;
+    case 'toolEraser':
+      activateTool('eraser');
+      break;
+    case 'toolFill':
+      activateTool('fill');
+      break;
+    case 'toolSelect':
+      activateTool('select');
+      break;
+    case 'toolMove':
+      activateTool('move');
+      break;
+    case 'toolPrevious':
+      cycleTool(-1);
+      break;
+    case 'toolNext':
+      cycleTool(1);
+      break;
+    case 'toggleGrid':
+      toggleGrid();
+      break;
+    case 'toggleTouchDrawing':
+      setTouchDrawingDisabled(!settingsStore.get().touchDrawingDisabled);
+      break;
+  }
+}
+
+function startGamepadShortcuts() {
+  let initialized = false;
+  let previous = new Set<string>();
+  const poll = () => {
+    const active = readActiveGamepadBindings();
+    const next = new Set(active.map(gamepadBindingToken));
+    if (initialized && !document.querySelector('dialog[open]')) {
+      for (const binding of active) {
+        if (previous.has(gamepadBindingToken(binding))) continue;
+        const assignment = settingsStore.get().shortcuts.find((item) => bindingsEqual(item.binding, binding));
+        if (assignment) runShortcutAction(assignment.action);
+      }
+    }
+    initialized = true;
+    previous = next;
+    requestAnimationFrame(poll);
+  };
+  requestAnimationFrame(poll);
 }
 
 function registerServiceWorker() {
@@ -278,6 +379,7 @@ async function openAppSettings(settingsModal: SettingsModalElement) {
   if (result === 'save') {
     for (const category of categories) category.apply();
   }
+  for (const category of categories) category.dispose?.();
 }
 
 /** 新しく開いた/作成したドキュメントをタブ管理下に登録する(履歴・変更イベントの購読は1回だけ) */
@@ -308,8 +410,7 @@ function switchToDocument(id: string) {
   drawingCanvas.setGridVisible(false);
   toolBar?.setGridActive(false);
   toolBar?.setUndoRedoEnabled(doc.history.canUndo, doc.history.canRedo);
-  drawingCanvas.setTool('pen');
-  toolBar?.setActiveTool('pen');
+  activateTool('pen');
   refreshTabs();
 }
 

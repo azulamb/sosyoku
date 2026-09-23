@@ -12,7 +12,7 @@ import type { BrushShape } from '../core/layer.ts';
 import { DEFAULT_PRESSURE_CURVE, evaluatePressureCurve } from '../core/pressure-curve.ts';
 import type { CurvePoint } from '../core/pressure-curve.ts';
 import { hexToRgba } from '../core/color.ts';
-import { matchesShortcut } from '../core/shortcuts.ts';
+import { matchesShortcut, type ShortcutActionId } from '../core/shortcuts.ts';
 import { settingsStore } from '../core/settings-store.ts';
 
 export type ToolName = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
@@ -44,6 +44,7 @@ export interface DrawingCanvasElement extends HTMLElement {
   setTouchDrawingDisabled(disabled: boolean): void;
   setGridVisible(visible: boolean): void;
   setBackgroundColor(color: string): void;
+  runShortcutAction(action: ShortcutActionId): boolean;
   render(): void;
 }
 
@@ -309,35 +310,44 @@ const REF_HANDLE_SIZE = 14;
 
       private onKeyDown = (e: KeyboardEvent) => {
         const shortcuts = settingsStore.get().shortcuts;
-
         if (matchesShortcut(e, shortcuts, 'deselect')) {
           const target = e.target as HTMLElement | null;
           if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
             return;
           }
-          if (!this.moveLayer && !this.selection) return;
-          this.commitPendingMove();
-          this.selection = null;
-          this.render();
-          e.preventDefault();
+          if (this.runShortcutAction('deselect')) e.preventDefault();
           return;
         }
 
         if (!matchesShortcut(e, shortcuts, 'deleteSelection')) return;
-        if (this.tool !== 'select' || !this.selection || this.selection.w < 1 || this.selection.h < 1) return;
         const target = e.target as HTMLElement | null;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
+        if (this.runShortcutAction('deleteSelection')) e.preventDefault();
+      };
+
+      runShortcutAction(action: ShortcutActionId): boolean {
+        if (action === 'deselect') {
+          if (!this.moveLayer && !this.selection) return false;
+          this.commitPendingMove();
+          this.selection = null;
+          this.render();
+          return true;
+        }
+
+        if (action !== 'deleteSelection') return false;
+        if (this.tool !== 'select' || !this.selection || this.selection.w < 1 || this.selection.h < 1) return false;
+
         const doc = this.doc;
         const layer = doc?.activeLayer;
-        if (!doc || !layer || layer.type !== 'normal' || layer.locked || !layer.visible) return;
+        if (!doc || !layer || layer.type !== 'normal' || layer.locked || !layer.visible) return false;
 
         const before = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
         layer.ctx.clearRect(this.selection.x, this.selection.y, this.selection.w, this.selection.h);
         this.pushRegionCommand(layer, before, this.selection, 'delete-selection');
         this.render();
-        e.preventDefault();
-      };
+        return true;
+      }
 
       private onPointerDown = (e: PointerEvent) => {
         this.canvas.setPointerCapture(e.pointerId);

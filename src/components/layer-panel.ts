@@ -13,6 +13,7 @@ import type { LayerItemElement } from './layer-item.ts';
 export interface LayerPanelElement extends HTMLElement {
   setDocument(doc: SosyokuDocument): void;
   setRenderCallback(cb: () => void): void;
+  selectRelative(offset: number): void;
 }
 
 ((script, init) => {
@@ -107,6 +108,16 @@ export interface LayerPanelElement extends HTMLElement {
 
       setRenderCallback(cb: () => void) {
         this.renderCallback = cb;
+      }
+
+      selectRelative(offset: number) {
+        if (!this.doc?.layers.length) return;
+        const currentIndex = Math.max(0, this.doc.layers.findIndex((layer) => layer.id === this.doc?.activeLayerId));
+        const nextIndex = (currentIndex + offset % this.doc.layers.length + this.doc.layers.length) %
+          this.doc.layers.length;
+        this.doc.activeLayerId = this.doc.layers[nextIndex].id;
+        this.renderList();
+        this.renderCallback?.();
       }
 
       private notifyRender() {

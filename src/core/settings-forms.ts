@@ -8,11 +8,14 @@ import { hexToRgba, rgbaToHex8, rgbToHex } from './color.ts';
 import {
   bindingFromEvent,
   bindingsEqual,
+  createShortcutAssignment,
   defaultShortcuts,
   formatBinding,
   SHORTCUT_DEFINITIONS,
   type ShortcutActionId,
+  type ShortcutAssignment,
   type ShortcutBinding,
+  startGamepadCapture,
 } from './shortcuts.ts';
 
 export interface EditableCategory {
@@ -20,6 +23,7 @@ export interface EditableCategory {
   label: string;
   content: HTMLElement;
   apply: () => void;
+  dispose?: () => void;
 }
 
 function fieldStyle(el: HTMLElement) {
@@ -342,6 +346,7 @@ export function buildAppSettingsCategories(): EditableCategory[] {
       apply: () => {
         settingsStore.update({ shortcuts: shortcuts.getShortcuts() });
       },
+      dispose: shortcuts.dispose,
     },
   ];
 }
@@ -353,103 +358,164 @@ export function buildAppSettingsCategories(): EditableCategory[] {
  * (元に戻す/やり直す/選択解除等)が誤発火しないよう、capture段階でイベントを止める。
  */
 function buildShortcutsContent(
-  initial: Record<ShortcutActionId, ShortcutBinding>,
-): { content: HTMLElement; getShortcuts: () => Record<ShortcutActionId, ShortcutBinding> } {
+  initial: ShortcutAssignment[],
+): { content: HTMLElement; getShortcuts: () => ShortcutAssignment[]; dispose: () => void } {
+  type EditableAssignment = Omit<ShortcutAssignment, 'binding'> & { binding: ShortcutBinding | null };
+
   const content = document.createElement('div');
-  let current: Record<ShortcutActionId, ShortcutBinding> = { ...initial };
+  const list = document.createElement('div');
+  let current: EditableAssignment[] = initial.map((assignment) => ({
+    ...assignment,
+    binding: { ...assignment.binding },
+  }));
 
   const conflictMsg = document.createElement('div');
   conflictMsg.style.cssText = 'color:var(--danger); font-size:12px; min-height:16px; margin-top:8px;';
 
   let stopRecording: (() => void) | null = null;
-
-  const rows: { id: ShortcutActionId; keyEl: HTMLSpanElement }[] = [];
-  const refreshRow = (id: ShortcutActionId) => {
-    const row = rows.find((r) => r.id === id);
-    if (row) row.keyEl.textContent = formatBinding(current[id]);
+  const stopCapture = () => {
+    const stop = stopRecording;
+    stopRecording = null;
+    stop?.();
   };
 
-  for (const def of SHORTCUT_DEFINITIONS) {
-    const row = document.createElement('div');
-    row.style.cssText =
-      'display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);';
+  const definitionFor = (action: ShortcutActionId) => SHORTCUT_DEFINITIONS.find((item) => item.id === action)!;
 
-    const label = document.createElement('span');
-    label.textContent = t(def.labelKey);
-    label.style.cssText = 'flex:1; font-size:13px;';
+  const assignBinding = (id: string, binding: ShortcutBinding) => {
+    const conflict = current.find((item) => item.id !== id && item.binding && bindingsEqual(item.binding, binding));
+    if (conflict) {
+      conflictMsg.textContent = t('shortcut.conflict', { action: t(definitionFor(conflict.action).labelKey) });
+      stopCapture();
+      render();
+      return;
+    }
+    const assignment = current.find((item) => item.id === id);
+    if (assignment) assignment.binding = binding;
+    conflictMsg.textContent = '';
+    stopCapture();
+    render();
+  };
 
-    const keyEl = document.createElement('span');
-    keyEl.style.cssText =
-      'font-family:monospace; font-size:12px; padding:4px 8px; border:1px solid var(--border); border-radius:4px; background:var(--bg); min-width:90px; text-align:center; flex:none;';
-    keyEl.textContent = formatBinding(current[def.id]);
-    rows.push({ id: def.id, keyEl });
+  const startRecording = (id: string, bindingEl: HTMLSpanElement) => {
+    stopCapture();
+    conflictMsg.textContent = '';
+    bindingEl.textContent = t('shortcut.recording');
 
-    const changeBtn = actionButton(t('shortcut.change'));
-    changeBtn.style.flex = 'none';
-    const resetBtn = actionButton(t('shortcut.reset'));
-    resetBtn.style.flex = 'none';
+    const keyboardHandler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === 'Escape') {
+        stopCapture();
+        render();
+        return;
+      }
+      const binding = bindingFromEvent(e);
+      if (binding) assignBinding(id, binding);
+    };
+    globalThis.addEventListener('keydown', keyboardHandler, true);
+    const stopGamepad = startGamepadCapture((binding) => assignBinding(id, binding));
+    stopRecording = () => {
+      globalThis.removeEventListener('keydown', keyboardHandler, true);
+      stopGamepad();
+    };
+  };
 
-    changeBtn.addEventListener('click', () => {
-      stopRecording?.();
-      conflictMsg.textContent = '';
-      keyEl.textContent = t('shortcut.recording');
+  const render = () => {
+    list.innerHTML = '';
+    for (const assignment of current) {
+      const row = document.createElement('div');
+      row.style.cssText =
+        'display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:9px 0; border-bottom:1px solid var(--border);';
 
-      const handler = (e: KeyboardEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
+      const actionSelect = document.createElement('select');
+      fieldStyle(actionSelect);
+      actionSelect.style.cssText += 'flex:1 1 180px; min-width:150px;';
+      for (const definition of SHORTCUT_DEFINITIONS) {
+        const option = document.createElement('option');
+        option.value = definition.id;
+        option.textContent = t(definition.labelKey);
+        actionSelect.appendChild(option);
+      }
+      actionSelect.value = assignment.action;
+      actionSelect.addEventListener('change', () => {
+        assignment.action = actionSelect.value as ShortcutActionId;
+        render();
+      });
 
-        if (e.key === 'Escape') {
-          stopRecording?.();
-          return;
-        }
-        const binding = bindingFromEvent(e);
-        if (!binding) return;
+      const bindingEl = document.createElement('span');
+      bindingEl.style.cssText =
+        'font-family:monospace; font-size:12px; padding:5px 8px; border:1px solid var(--border); border-radius:4px; background:var(--bg); min-width:130px; text-align:center; flex:1 1 130px;';
+      bindingEl.textContent = assignment.binding ? formatBinding(assignment.binding) : t('shortcut.unassigned');
 
-        const conflictDef = SHORTCUT_DEFINITIONS.find(
-          (d) => d.id !== def.id && bindingsEqual(current[d.id], binding),
-        );
-        if (conflictDef) {
-          conflictMsg.textContent = t('shortcut.conflict', { action: t(conflictDef.labelKey) });
-          stopRecording?.();
-          return;
-        }
+      const changeBtn = actionButton(t('shortcut.change'));
+      changeBtn.addEventListener('click', () => startRecording(assignment.id, bindingEl));
 
-        current[def.id] = binding;
+      const resetBtn = actionButton(t('shortcut.reset'));
+      const defaultBinding = definitionFor(assignment.action).default;
+      resetBtn.disabled = !defaultBinding;
+      resetBtn.style.opacity = defaultBinding ? '1' : '0.45';
+      resetBtn.addEventListener('click', () => {
+        const next = definitionFor(assignment.action).default;
+        if (next) assignBinding(assignment.id, { ...next });
+      });
+
+      const deleteBtn = actionButton(t('shortcut.remove'));
+      deleteBtn.addEventListener('click', () => {
+        stopCapture();
+        current = current.filter((item) => item.id !== assignment.id);
         conflictMsg.textContent = '';
-        stopRecording?.();
-      };
+        render();
+      });
 
-      globalThis.addEventListener('keydown', handler, true);
-      stopRecording = () => {
-        globalThis.removeEventListener('keydown', handler, true);
-        stopRecording = null;
-        refreshRow(def.id);
-      };
+      row.appendChild(actionSelect);
+      row.appendChild(bindingEl);
+      row.appendChild(changeBtn);
+      row.appendChild(resetBtn);
+      row.appendChild(deleteBtn);
+      list.appendChild(row);
+    }
+  };
+
+  const controls = document.createElement('div');
+  controls.style.cssText = 'display:flex; gap:8px; margin-top:10px;';
+  const addBtn = actionButton(t('shortcut.add'));
+  addBtn.addEventListener('click', () => {
+    stopCapture();
+    const assignment = createShortcutAssignment('undo', {
+      type: 'keyboard',
+      key: '',
+      mod: false,
+      shift: false,
+      alt: false,
     });
-
-    resetBtn.addEventListener('click', () => {
-      current[def.id] = { ...def.default };
-      conflictMsg.textContent = '';
-      refreshRow(def.id);
-    });
-
-    row.appendChild(label);
-    row.appendChild(keyEl);
-    row.appendChild(changeBtn);
-    row.appendChild(resetBtn);
-    content.appendChild(row);
-  }
+    current.push({ ...assignment, binding: null });
+    conflictMsg.textContent = '';
+    render();
+  });
 
   const resetAllBtn = actionButton(t('shortcut.resetAll'));
-  resetAllBtn.style.marginTop = '10px';
   resetAllBtn.addEventListener('click', () => {
-    stopRecording?.();
+    stopCapture();
     current = defaultShortcuts();
     conflictMsg.textContent = '';
-    for (const row of rows) refreshRow(row.id);
+    render();
   });
-  content.appendChild(resetAllBtn);
+  controls.appendChild(addBtn);
+  controls.appendChild(resetAllBtn);
+
+  render();
+  content.appendChild(list);
+  content.appendChild(controls);
   content.appendChild(conflictMsg);
 
-  return { content, getShortcuts: () => current };
+  return {
+    content,
+    dispose: stopCapture,
+    getShortcuts: () => {
+      stopCapture();
+      return current.flatMap((assignment) =>
+        assignment.binding ? [{ ...assignment, binding: { ...assignment.binding } }] : []
+      );
+    },
+  };
 }

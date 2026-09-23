@@ -1,5 +1,5 @@
 import { type CurvePoint, DEFAULT_PRESSURE_CURVE } from './pressure-curve.ts';
-import { defaultShortcuts, type ShortcutActionId, type ShortcutBinding } from './shortcuts.ts';
+import { defaultShortcuts, normalizeShortcuts, type ShortcutAssignment } from './shortcuts.ts';
 
 export const DEFAULT_PALETTE: string[] = [
   '#F5F8FF', // soft white
@@ -48,7 +48,7 @@ export interface AppSettings {
   pressureCurve: CurvePoint[];
   zoomWheelReversed: boolean;
   touchDrawingDisabled: boolean;
-  shortcuts: Record<ShortcutActionId, ShortcutBinding>;
+  shortcuts: ShortcutAssignment[];
 }
 
 const STORAGE_KEY = 'sosyoku.settings.v1';
@@ -75,7 +75,7 @@ function load(): AppSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      result = { ...defaults(), ...parsed };
+      result = { ...defaults(), ...parsed, shortcuts: normalizeShortcuts(parsed.shortcuts) };
     }
   } catch {
     // 破損データは無視してデフォルトへフォールバック
@@ -114,7 +114,7 @@ export const settingsStore = {
   },
   importJSON(json: string) {
     const parsed = JSON.parse(json);
-    cache = { ...defaults(), ...parsed };
+    cache = { ...defaults(), ...parsed, shortcuts: normalizeShortcuts(parsed.shortcuts) };
     persist();
     document.dispatchEvent(new CustomEvent('settings-changed', { detail: cache }));
   },
