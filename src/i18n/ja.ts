@@ -41,6 +41,9 @@ export const ja = {
   'dialog.close': '閉じる',
 
   'colorpicker.title': '色を選択',
+  'colorpicker.customTitle': 'カスタム色',
+  'colorpicker.hue': '色相',
+  'colorpicker.saturationValue': '彩度と明度',
   'layer.add.title': 'レイヤーを追加',
   'layer.add.colorTab': '色を選択',
   'layer.add.fileTab': 'ファイルを選択',

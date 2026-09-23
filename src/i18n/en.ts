@@ -43,6 +43,9 @@ export const en: Record<TranslationKey, string> = {
   'dialog.close': 'Close',
 
   'colorpicker.title': 'Choose Color',
+  'colorpicker.customTitle': 'Custom Color',
+  'colorpicker.hue': 'Hue',
+  'colorpicker.saturationValue': 'Saturation and brightness',
   'layer.add.title': 'Add Layer',
   'layer.add.colorTab': 'Choose Color',
   'layer.add.fileTab': 'Choose File',
