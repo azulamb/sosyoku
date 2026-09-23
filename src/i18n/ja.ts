@@ -11,7 +11,7 @@ export const ja = {
   'tool.redo': 'やり直す',
   'tool.save': '保存',
   'tool.grid': 'グリッド表示切替',
-  'tool.touchDrawingDisabled': 'タッチ描画を無効化',
+  'tool.touchDrawingDisabled': 'タッチ描画',
   'tool.pen': 'ペン',
   'tool.fill': '塗りつぶし',
   'tool.eraser': '消しゴム',
@@ -84,6 +84,14 @@ export const ja = {
 
   'about.appName': 'Sosyoku',
   'about.tagline': '1レイヤー1色のシンプルなお絵かきツール',
+  'about.update': '更新を確認',
+  'about.updateChecking': '更新を確認しています...',
+  'about.updateCurrent': '最新版です',
+  'about.updateReady': '更新を適用できます',
+  'about.updateApplying': '更新を適用しています...',
+  'about.updateUnavailable': 'この環境ではPWA更新を利用できません',
+  'about.updateFailed': '更新を確認できませんでした',
+  'about.updateConfirm': '更新するとアプリを再読み込みします。未保存の変更は失われます。更新しますか？',
 
   'pen.export.title': 'エクスポートするペンを選択',
   'pen.export.action': 'エクスポート',

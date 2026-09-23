@@ -13,7 +13,7 @@ export const en: Record<TranslationKey, string> = {
   'tool.redo': 'Redo',
   'tool.save': 'Save',
   'tool.grid': 'Toggle Grid',
-  'tool.touchDrawingDisabled': 'Disable Touch Drawing',
+  'tool.touchDrawingDisabled': 'Touch Drawing',
   'tool.pen': 'Pen',
   'tool.fill': 'Fill',
   'tool.eraser': 'Eraser',
@@ -86,6 +86,14 @@ export const en: Record<TranslationKey, string> = {
 
   'about.appName': 'Sosyoku',
   'about.tagline': 'A simple one-layer-one-color drawing tool',
+  'about.update': 'Check for Updates',
+  'about.updateChecking': 'Checking for updates...',
+  'about.updateCurrent': 'Sosyoku is up to date',
+  'about.updateReady': 'An update is ready to apply',
+  'about.updateApplying': 'Applying update...',
+  'about.updateUnavailable': 'PWA updates are unavailable in this environment',
+  'about.updateFailed': 'Could not check for updates',
+  'about.updateConfirm': 'Updating reloads the app. Unsaved changes will be lost. Update now?',
 
   'pen.export.title': 'Select pens to export',
   'pen.export.action': 'Export',

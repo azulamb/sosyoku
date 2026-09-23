@@ -48,19 +48,31 @@ const REPO_URL = 'https://github.com/azulamb/sosyoku';
           link.rel = 'noopener noreferrer';
           link.style.cssText = 'color:var(--accent);font-size:12px;word-break:break-all;';
 
+          const updateStatus = document.createElement('div');
+          updateStatus.setAttribute('role', 'status');
+          updateStatus.style.cssText = 'min-height:18px;margin-top:14px;color:var(--text-muted);font-size:12px;';
+
           const footer = document.createElement('div');
           footer.style.cssText =
-            'display:flex;justify-content:flex-end;padding:12px 18px;border-top:1px solid var(--border);';
+            'display:flex;justify-content:space-between;gap:8px;padding:12px 18px;border-top:1px solid var(--border);';
+          const updateBtn = document.createElement('button');
+          updateBtn.type = 'button';
+          updateBtn.textContent = t('about.update');
+          updateBtn.disabled = !('serviceWorker' in navigator);
+          updateBtn.style.cssText =
+            'background:transparent;border:1px solid var(--border);border-radius:4px;padding:6px 14px;color:inherit;';
           const closeBtn = document.createElement('button');
           closeBtn.type = 'button';
           closeBtn.textContent = t('dialog.close');
           closeBtn.style.cssText =
             'background:var(--accent);color:var(--accent-contrast);border:none;border-radius:4px;padding:6px 14px;';
+          footer.appendChild(updateBtn);
           footer.appendChild(closeBtn);
 
           body.appendChild(heading);
           body.appendChild(desc);
           body.appendChild(link);
+          body.appendChild(updateStatus);
           dialog.appendChild(body);
           dialog.appendChild(footer);
           document.body.appendChild(dialog);
@@ -70,6 +82,9 @@ const REPO_URL = 'https://github.com/azulamb/sosyoku';
             dialog.remove();
             resolve();
           };
+          updateBtn.addEventListener('click', () => {
+            void this.updatePwa(updateBtn, updateStatus);
+          });
           closeBtn.addEventListener('click', cleanup);
           dialog.addEventListener('cancel', cleanup);
           dialog.addEventListener('click', (e) => {
@@ -78,6 +93,63 @@ const REPO_URL = 'https://github.com/azulamb/sosyoku';
 
           dialog.showModal();
         });
+      }
+
+      private async updatePwa(button: HTMLButtonElement, status: HTMLElement) {
+        if (!('serviceWorker' in navigator)) {
+          status.textContent = t('about.updateUnavailable');
+          return;
+        }
+
+        button.disabled = true;
+        status.textContent = t('about.updateChecking');
+        let applying = false;
+        const controllerChanged = () => {
+          if (!applying) return;
+          globalThis.location.reload();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', controllerChanged);
+
+        try {
+          const registration = await navigator.serviceWorker.getRegistration() ??
+            await navigator.serviceWorker.register('sw.js');
+          await registration.update();
+
+          let worker = registration.waiting ?? registration.installing;
+          if (worker?.state === 'installing') {
+            await new Promise<void>((resolve) => {
+              const onStateChange = () => {
+                if (worker?.state === 'installed' || worker?.state === 'activated' || worker?.state === 'redundant') {
+                  worker?.removeEventListener('statechange', onStateChange);
+                  resolve();
+                }
+              };
+              worker?.addEventListener('statechange', onStateChange);
+              onStateChange();
+            });
+          }
+
+          worker = registration.waiting;
+          if (!worker) {
+            status.textContent = t('about.updateCurrent');
+            return;
+          }
+          if (!globalThis.confirm(t('about.updateConfirm'))) {
+            status.textContent = t('about.updateReady');
+            return;
+          }
+
+          applying = true;
+          status.textContent = t('about.updateApplying');
+          worker.postMessage({ type: 'SKIP_WAITING' });
+        } catch {
+          status.textContent = t('about.updateFailed');
+        } finally {
+          if (!applying) {
+            navigator.serviceWorker.removeEventListener('controllerchange', controllerChanged);
+            button.disabled = false;
+          }
+        }
       }
     },
   );

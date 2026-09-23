@@ -98,10 +98,11 @@ export interface ToolBarElement extends HTMLElement {
         saveBtn.addEventListener('tool-click', () => this.dispatchEvent(new CustomEvent('save')));
         this.gridBtn.addEventListener('tool-click', () => this.dispatchEvent(new CustomEvent('grid-toggle')));
         this.touchDrawingBtn.addEventListener('tool-click', () => {
-          this.setTouchDrawingDisabled(!this.touchDrawingBtn.active);
+          const disabled = this.touchDrawingBtn.active;
+          this.setTouchDrawingDisabled(disabled);
           this.dispatchEvent(
             new CustomEvent('touch-drawing-toggle', {
-              detail: { disabled: this.touchDrawingBtn.active },
+              detail: { disabled },
               bubbles: true,
               composed: true,
             }),
@@ -132,7 +133,7 @@ export interface ToolBarElement extends HTMLElement {
       }
 
       setTouchDrawingDisabled(disabled: boolean) {
-        this.touchDrawingBtn.active = disabled;
+        this.touchDrawingBtn.active = !disabled;
       }
     },
   );
