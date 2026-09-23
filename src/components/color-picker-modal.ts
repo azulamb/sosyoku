@@ -8,7 +8,7 @@ import { settingsStore } from '../core/settings-store.ts';
 import { t } from '../i18n/index.ts';
 
 export interface ColorPickerModalElement extends HTMLElement {
-  open(currentColor: string): Promise<string | null>;
+  open(currentColor: string, onPreview?: (color: string) => void): Promise<string | null>;
 }
 
 ((script, init) => {
@@ -26,7 +26,7 @@ export interface ColorPickerModalElement extends HTMLElement {
   customElements.define(
     tagname,
     class extends HTMLElement implements ColorPickerModalElement {
-      async open(currentColor: string): Promise<string | null> {
+      async open(currentColor: string, onPreview?: (color: string) => void): Promise<string | null> {
         let selected = currentColor;
 
         const content = document.createElement('div');
@@ -59,6 +59,7 @@ export interface ColorPickerModalElement extends HTMLElement {
           selected = nativeInput.value;
           nativeLabel.textContent = selected;
           highlightSwatch(selected);
+          onPreview?.(selected);
         });
 
         for (const color of settingsStore.get().palette) {
@@ -73,6 +74,7 @@ export interface ColorPickerModalElement extends HTMLElement {
             nativeInput.value = color;
             nativeLabel.textContent = color;
             highlightSwatch(color);
+            onPreview?.(selected);
           });
           swatches.push(swatch);
           grid.appendChild(swatch);

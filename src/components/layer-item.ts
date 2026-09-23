@@ -196,12 +196,23 @@ export interface LayerItemElement extends HTMLElement {
         if (!this.layer || this.layer.type !== 'normal') return;
         const picker = document.querySelector('color-picker-modal') as ColorPickerModalElement | null;
         if (!picker) return;
-        const color = await picker.open(this.layer.color);
+        const originalColor = this.layer.color;
+        const preview = (nextColor: string) => {
+          if (!this.layer || this.layer.type !== 'normal') return;
+          this.layer.setColor(nextColor);
+          this.refresh();
+          this.dispatchEvent(new CustomEvent('layer-preview', { bubbles: true, composed: true }));
+        };
+        const color = await picker.open(originalColor, preview);
         if (color && this.layer.type === 'normal') {
           this.layer.setColor(color);
           this.doc?.markDirty();
           this.refresh();
           this.notifyChanged();
+        } else if (this.layer.type === 'normal') {
+          this.layer.setColor(originalColor);
+          this.refresh();
+          this.dispatchEvent(new CustomEvent('layer-preview', { bubbles: true, composed: true }));
         }
       }
 

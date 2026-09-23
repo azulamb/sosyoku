@@ -91,6 +91,7 @@ export interface LayerPanelElement extends HTMLElement {
         delBtn.addEventListener('click', () => this.deleteActiveLayer());
 
         this.list.addEventListener('layer-selected', () => this.renderList());
+        this.list.addEventListener('layer-preview', () => this.renderCallback?.());
         this.list.addEventListener('layer-changed', () => this.notifyRender());
         this.list.addEventListener('layer-reorder', (e) => {
           const { id, toIndex } = (e as CustomEvent).detail;
