@@ -119,12 +119,19 @@ export interface LayerItemElement extends HTMLElement {
         shadow.appendChild(this.root);
 
         this.root.addEventListener('click', (e) => {
-          if (e.target === this.visibleBtn || e.target === this.lockBtn || e.target === this.opacityInput) return;
+          const path = e.composedPath();
+          if (
+            path.includes(this.visibleBtn) || path.includes(this.lockBtn) || path.includes(this.swatch) ||
+            path.includes(this.opacityInput)
+          ) return;
           this.selectLayer();
         });
         this.visibleBtn.addEventListener('click', () => this.toggleVisible());
         this.lockBtn.addEventListener('click', () => this.toggleLock());
-        this.swatch.addEventListener('click', () => this.openColorPicker());
+        this.swatch.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void this.openColorPicker();
+        });
         this.nameEl.addEventListener('dblclick', () => this.openRename());
         this.opacityInput.addEventListener('input', () => this.changeOpacity());
         this.handle.addEventListener('pointerdown', (e) => this.startReorder(e));
