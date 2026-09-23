@@ -1,5 +1,6 @@
 /** Keyboard and gamepad shortcut definitions, persistence helpers, and input formatting. */
 import type { TranslationKey } from '../i18n/index.ts';
+import { createId } from './util.ts';
 
 export interface KeyboardShortcutBinding {
   type: 'keyboard';
@@ -87,7 +88,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
 const ACTION_IDS = new Set<ShortcutActionId>(SHORTCUT_DEFINITIONS.map((definition) => definition.id));
 
 function nextAssignmentId(): string {
-  return `shortcut-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  return createId('shortcut');
 }
 
 export function createShortcutAssignment(action: ShortcutActionId, binding: ShortcutBinding): ShortcutAssignment {
@@ -175,14 +176,6 @@ export function matchesBinding(e: KeyboardEvent, binding: ShortcutBinding): bool
   const mod = e.ctrlKey || e.metaKey;
   if (mod !== binding.mod || e.shiftKey !== binding.shift || e.altKey !== binding.alt) return false;
   return normalizeKey(e.key) === binding.key;
-}
-
-export function matchesShortcut(
-  e: KeyboardEvent,
-  shortcuts: ShortcutAssignment[],
-  actionId: ShortcutActionId,
-): boolean {
-  return shortcuts.some((assignment) => assignment.action === actionId && matchesBinding(e, assignment.binding));
 }
 
 export function findKeyboardShortcutAction(

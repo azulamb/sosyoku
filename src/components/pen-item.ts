@@ -3,12 +3,20 @@
 ペン1件を表す行コンポーネント。名前(ダブルクリックで変更)・サイズ・形状(丸/四角)・削除・選択(アクティブ化)を扱う。
 */
 import type { PenSetting } from '../core/settings-store.ts';
-import { showBlockingDialog } from '../core/dialog.ts';
+import { showTextInputDialog } from '../core/dialog.ts';
+import { emit } from '../core/dom.ts';
+import { clamp } from '../core/util.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
 
 export interface PenItemElement extends HTMLElement {
   bind(pen: PenSetting, isActive: boolean): void;
+}
+
+const MAX_PEN_SIZE = 200;
+
+function shapeGlyph(pen: PenSetting): string {
+  return pen.shape === 'round' ? '●' : '■';
 }
 
 ((script, init) => {
@@ -75,7 +83,7 @@ export interface PenItemElement extends HTMLElement {
         this.sizeInput.type = 'number';
         this.sizeInput.className = 'size';
         this.sizeInput.min = '1';
-        this.sizeInput.max = '200';
+        this.sizeInput.max = String(MAX_PEN_SIZE);
         this.sizeInput.title = t('pen.size');
 
         this.deleteBtn = document.createElement('button');
@@ -103,61 +111,47 @@ export interface PenItemElement extends HTMLElement {
 
       bind(pen: PenSetting, isActive: boolean) {
         this.pen = pen;
-        this.shapeBtn.textContent = pen.shape === 'round' ? '●' : '■';
+        this.shapeBtn.textContent = shapeGlyph(pen);
         this.nameEl.textContent = pen.name;
         this.sizeInput.value = String(pen.size);
         this.root.classList.toggle('active', isActive);
       }
 
       private dispatchSelect() {
-        if (!this.pen) return;
-        this.dispatchEvent(
-          new CustomEvent('pen-selected', { detail: { id: this.pen.id }, bubbles: true, composed: true }),
-        );
+        if (this.pen) emit(this, 'pen-selected', { id: this.pen.id });
       }
 
       private dispatchDelete() {
-        if (!this.pen) return;
-        this.dispatchEvent(
-          new CustomEvent('pen-delete', { detail: { id: this.pen.id }, bubbles: true, composed: true }),
-        );
+        if (this.pen) emit(this, 'pen-delete', { id: this.pen.id });
       }
 
       private toggleShape() {
         if (!this.pen) return;
         this.pen.shape = this.pen.shape === 'round' ? 'square' : 'round';
-        this.shapeBtn.textContent = this.pen.shape === 'round' ? '●' : '■';
+        this.shapeBtn.textContent = shapeGlyph(this.pen);
         this.notifyChanged();
       }
 
       private changeSize() {
         if (!this.pen) return;
-        const size = Math.max(1, Math.min(200, Number(this.sizeInput.value) || this.pen.size));
+        const size = clamp(Number(this.sizeInput.value) || this.pen.size, 1, MAX_PEN_SIZE);
         this.pen.size = size;
         this.sizeInput.value = String(size);
         this.notifyChanged();
       }
 
       private async openRename() {
-        if (!this.pen) return;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = this.pen.name;
-        input.style.cssText = 'width:100%;padding:8px;font-size:14px;box-sizing:border-box;';
-        const result = await showBlockingDialog({
-          title: t('rename.pen.title'),
-          content: input,
-          saveLabel: t('dialog.change'),
-        });
-        if (result === 'save' && input.value.trim() && this.pen) {
-          this.pen.name = input.value.trim();
-          this.nameEl.textContent = this.pen.name;
-          this.notifyChanged();
-        }
+        const pen = this.pen;
+        if (!pen) return;
+        const name = await showTextInputDialog(t('rename.pen.title'), pen.name);
+        if (!name) return;
+        pen.name = name;
+        this.nameEl.textContent = name;
+        this.notifyChanged();
       }
 
       private notifyChanged() {
-        this.dispatchEvent(new CustomEvent('pen-changed', { bubbles: true, composed: true }));
+        emit(this, 'pen-changed');
       }
     },
   );

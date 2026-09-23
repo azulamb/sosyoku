@@ -5,7 +5,8 @@
 */
 import type { SosyokuDocument } from '../core/document.ts';
 import type { Layer } from '../core/layer.ts';
-import { showBlockingDialog } from '../core/dialog.ts';
+import { showTextInputDialog } from '../core/dialog.ts';
+import { emit } from '../core/dom.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
 import type { ColorPickerModalElement } from './color-picker-modal.ts';
@@ -175,9 +176,7 @@ export interface LayerItemElement extends HTMLElement {
       private selectLayer() {
         if (!this.doc || !this.layer) return;
         this.doc.activeLayerId = this.layer.id;
-        this.dispatchEvent(
-          new CustomEvent('layer-selected', { detail: { id: this.layer.id }, bubbles: true, composed: true }),
-        );
+        emit(this, 'layer-selected', { id: this.layer.id });
       }
 
       private toggleVisible() {
@@ -201,46 +200,37 @@ export interface LayerItemElement extends HTMLElement {
         this.notifyChanged();
       }
 
+      /** 色選択中はプレビューとして即時反映し、キャンセル時は元の色に戻す */
       private async openColorPicker() {
-        if (!this.layer || this.layer.type !== 'normal') return;
+        const layer = this.layer;
+        if (layer?.type !== 'normal') return;
         const picker = document.querySelector('color-picker-modal') as ColorPickerModalElement | null;
         if (!picker) return;
-        const originalColor = this.layer.color;
-        const preview = (nextColor: string) => {
-          if (!this.layer || this.layer.type !== 'normal') return;
-          this.layer.setColor(nextColor);
+        const originalColor = layer.color;
+        const previewColor = (color: string) => {
+          layer.setColor(color);
           this.refresh();
           this.previewCallback?.();
         };
-        const color = await picker.open(originalColor, preview);
-        if (color && this.layer.type === 'normal') {
-          this.layer.setColor(color);
+        const color = await picker.open(originalColor, previewColor);
+        if (color) {
+          layer.setColor(color);
           this.doc?.markDirty();
           this.refresh();
           this.notifyChanged();
-        } else if (this.layer.type === 'normal') {
-          this.layer.setColor(originalColor);
-          this.refresh();
-          this.previewCallback?.();
+        } else {
+          previewColor(originalColor);
         }
       }
 
       private async openRename() {
-        if (!this.layer) return;
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = this.layer.name;
-        input.style.cssText = 'width:100%;padding:8px;font-size:14px;box-sizing:border-box;';
-        const result = await showBlockingDialog({
-          title: t('rename.layer.title'),
-          content: input,
-          saveLabel: t('dialog.change'),
-        });
-        if (result === 'save' && input.value.trim()) {
-          this.layer.name = input.value.trim();
-          this.refresh();
-          this.notifyChanged();
-        }
+        const layer = this.layer;
+        if (!layer) return;
+        const name = await showTextInputDialog(t('rename.layer.title'), layer.name);
+        if (!name) return;
+        layer.name = name;
+        this.refresh();
+        this.notifyChanged();
       }
 
       private startReorder(e: PointerEvent) {
@@ -252,12 +242,9 @@ export interface LayerItemElement extends HTMLElement {
         this.handle.setPointerCapture(e.pointerId);
         this.root.style.opacity = '0.6';
 
-        const onMove = (_ev: PointerEvent) => {
-          // ドラッグ中の視覚フィードバックのみ。並び替え自体はpointerup時に確定する。
-        };
+        // ドラッグ中は半透明表示のみ。並び替え先はpointerup時の位置で確定する。
         const onUp = (ev: PointerEvent) => {
           this.handle.releasePointerCapture(ev.pointerId);
-          globalThis.removeEventListener('pointermove', onMove);
           globalThis.removeEventListener('pointerup', onUp);
           this.root.style.opacity = '';
 
@@ -270,16 +257,13 @@ export interface LayerItemElement extends HTMLElement {
               break;
             }
           }
-          this.dispatchEvent(
-            new CustomEvent('layer-reorder', { detail: { id: layerId, toIndex }, bubbles: true, composed: true }),
-          );
+          emit(this, 'layer-reorder', { id: layerId, toIndex });
         };
-        globalThis.addEventListener('pointermove', onMove);
         globalThis.addEventListener('pointerup', onUp);
       }
 
       private notifyChanged() {
-        this.dispatchEvent(new CustomEvent('layer-changed', { bubbles: true, composed: true }));
+        emit(this, 'layer-changed');
       }
     },
   );

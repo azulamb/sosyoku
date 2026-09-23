@@ -5,6 +5,10 @@
 拡大縮小時はスクロールバーで移動できる。Ctrl+ホイールでも拡大縮小できる(方向は設定で反転可能)。
 */
 import { settingsStore } from '../core/settings-store.ts';
+import { clamp } from '../core/util.ts';
+
+const MIN_ZOOM = 0.05;
+const MAX_ZOOM = 16;
 
 export interface CanvasDeskElement extends HTMLElement {
   readonly zoom: number;
@@ -52,7 +56,7 @@ export interface CanvasDeskElement extends HTMLElement {
       }
 
       setZoom(zoom: number) {
-        this.zoomValue = Math.max(0.05, Math.min(16, zoom));
+        this.zoomValue = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
         this.applyZoom();
         this.dispatchEvent(
           new CustomEvent('zoom-changed', { detail: { zoom: this.zoomValue }, bubbles: true, composed: true }),

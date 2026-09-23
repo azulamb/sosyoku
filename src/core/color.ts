@@ -1,3 +1,5 @@
+import { clamp } from './util.ts';
+
 export function hexToRgb(hex: string): [number, number, number] {
   const clean = hex.replace('#', '');
   const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
@@ -7,7 +9,7 @@ export function hexToRgb(hex: string): [number, number, number] {
 
 export function rgbToHex(r: number, g: number, b: number): string {
   return '#' +
-    [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+    [r, g, b].map((v) => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
 }
 
 export interface HsvColor {
@@ -35,8 +37,8 @@ export function rgbToHsv(r: number, g: number, b: number): HsvColor {
 
 export function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
   const hue = ((h % 360) + 360) % 360;
-  const saturation = Math.max(0, Math.min(1, s));
-  const value = Math.max(0, Math.min(1, v));
+  const saturation = clamp(s, 0, 1);
+  const value = clamp(v, 0, 1);
   const chroma = value * saturation;
   const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1));
   const offset = value - chroma;
@@ -61,6 +63,12 @@ export function hexToRgba(hex: string): { r: number; g: number; b: number; a: nu
 }
 
 export function rgbaToHex8(r: number, g: number, b: number, a: number): string {
-  const alphaByte = Math.max(0, Math.min(255, Math.round(a * 255)));
+  const alphaByte = clamp(Math.round(a * 255), 0, 255);
   return rgbToHex(r, g, b) + alphaByte.toString(16).padStart(2, '0');
+}
+
+/** #RRGGBB / #RRGGBBAA をCSSの rgba() 文字列に変換する */
+export function hexToCss(hex: string): string {
+  const { r, g, b, a } = hexToRgba(hex);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
 }

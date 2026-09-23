@@ -2,38 +2,34 @@
 <drawing-canvas>
 ドキュメントを合成表示し、ポインタ入力(ペン/塗りつぶし/消しゴム/選択/移動)で描画するキャンバスコンポーネント。
 1本指/ペン/マウス = 描画、2本以上のポインタ = 'pan-zoom' イベントを発火して外側(canvas-desk)に処理を委譲する。
+選択解除・選択範囲削除のショートカットは app.ts から runShortcutAction() 経由で呼び出される。
 */
 import type { SosyokuDocument } from '../core/document.ts';
 import { CanvasEngine } from '../core/canvas-engine.ts';
 import { GestureController } from '../core/pointer-input.ts';
 import { cropImageData } from '../core/imagedata.ts';
-import type { NormalLayer, ReferenceLayer } from '../core/layer.ts';
-import type { BrushShape } from '../core/layer.ts';
-import { DEFAULT_PRESSURE_CURVE, evaluatePressureCurve } from '../core/pressure-curve.ts';
-import type { CurvePoint } from '../core/pressure-curve.ts';
+import type { BrushShape, NormalLayer, ReferenceLayer } from '../core/layer.ts';
+import { type CurvePoint, DEFAULT_PRESSURE_CURVE, evaluatePressureCurve } from '../core/pressure-curve.ts';
 import { hexToRgba } from '../core/color.ts';
-import { matchesShortcut, type ShortcutActionId } from '../core/shortcuts.ts';
-import { settingsStore } from '../core/settings-store.ts';
+import type { ShortcutActionId } from '../core/shortcuts.ts';
+import type { ToolName } from '../core/tools.ts';
+import { clamp, type Rect } from '../core/util.ts';
 
-export type ToolName = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
+export type { ToolName };
 
 export interface BrushSetting {
   radius: number;
   shape: BrushShape;
 }
 
-interface DirtyRect {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-interface Rect {
+interface Point {
   x: number;
   y: number;
-  w: number;
-  h: number;
+}
+
+interface Offset {
+  dx: number;
+  dy: number;
 }
 
 export interface DrawingCanvasElement extends HTMLElement {
@@ -44,11 +40,72 @@ export interface DrawingCanvasElement extends HTMLElement {
   setTouchDrawingDisabled(disabled: boolean): void;
   setGridVisible(visible: boolean): void;
   setBackgroundColor(color: string): void;
+  /** 実行した(状態が変化した)場合にtrueを返す */
   runShortcutAction(action: ShortcutActionId): boolean;
   render(): void;
 }
 
 const REF_HANDLE_SIZE = 14;
+const OVERLAY_COLOR = '#007acc';
+const ZERO_OFFSET: Offset = { dx: 0, dy: 0 };
+
+function rectFromPoints(a: Point, b: Point): Rect {
+  return {
+    x: Math.round(Math.min(a.x, b.x)),
+    y: Math.round(Math.min(a.y, b.y)),
+    w: Math.round(Math.abs(b.x - a.x)),
+    h: Math.round(Math.abs(b.y - a.y)),
+  };
+}
+
+function unionRect(a: Rect, b: Rect): Rect {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+
+function offsetRect(rect: Rect, { dx, dy }: Offset): Rect {
+  return { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h };
+}
+
+function hasArea(rect: Rect | null): rect is Rect {
+  return !!rect && rect.w > 0 && rect.h > 0;
+}
+
+function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+}
+
+/** 選択範囲(またはレイヤー全体)を浮かせて移動中の状態。選択解除まではレイヤーに確定しない */
+interface FloatingMove {
+  layer: NormalLayer;
+  /** 移動開始時点のレイヤー全体のピクセル(常にここから作り直すため、何度ドラッグしても劣化しない) */
+  before: ImageData;
+  region: Rect;
+  content: OffscreenCanvas;
+  /** 現在のドラッグ開始点(ドラッグしていない間はnull) */
+  dragOrigin: Point | null;
+  /** 確定済み(ドラッグが一段落した)オフセット */
+  committed: Offset;
+  /** 現在ドラッグ中も含めた最新のオフセット(オーバーレイの選択枠追従に使う) */
+  live: Offset;
+}
+
+/** 参照レイヤーの移動/拡大縮小ドラッグ中の状態 */
+interface ReferenceDrag {
+  layer: ReferenceLayer;
+  mode: 'move' | 'resize';
+  start: Point;
+  original: Rect;
+}
+
+/** ペン/消しゴムのストローク中の状態 */
+interface Stroke {
+  layer: NormalLayer;
+  before: ImageData;
+  dirty: Rect | null;
+  lastPoint: Point;
+}
 
 ((script, init) => {
   const tagname = script.dataset['drawingCanvas'] || 'drawing-canvas';
@@ -76,30 +133,11 @@ const REF_HANDLE_SIZE = 14;
       private touchDrawingDisabled = false;
       private gesture = new GestureController();
 
-      private strokeLayer: NormalLayer | null = null;
-      private strokeBefore: ImageData | null = null;
-      private strokeDirty: DirtyRect | null = null;
-      private lastPoint: { x: number; y: number } | null = null;
-
+      private stroke: Stroke | null = null;
       private selection: Rect | null = null;
-      private selectStart: { x: number; y: number } | null = null;
-
-      private moveLayer: NormalLayer | null = null;
-      private moveFullBefore: ImageData | null = null;
-      private moveRegion: Rect | null = null;
-      private moveContentCanvas: OffscreenCanvas | null = null;
-      private moveDragOrigin: { x: number; y: number } | null = null;
-      // moveCommittedOffset: このフローティング移動セッション内で、確定済み(ドラッグが一段落した)オフセット。
-      // moveLiveOffset: 現在ドラッグ中も含めた最新のオフセット(オーバーレイの選択枠追従に使う)。
-      // 選択解除(新規選択・ツール切替・Escape・ドキュメント切替)まではレイヤー本体には確定(履歴登録)しない。
-      private moveCommittedOffset = { dx: 0, dy: 0 };
-      private moveLiveOffset = { dx: 0, dy: 0 };
-
-      private refLayer: ReferenceLayer | null = null;
-      private refDragMode: 'move' | 'resize' | null = null;
-      private refDragStart:
-        | { x: number; y: number; origX: number; origY: number; origW: number; origH: number }
-        | null = null;
+      private selectStart: Point | null = null;
+      private floating: FloatingMove | null = null;
+      private refDrag: ReferenceDrag | null = null;
 
       constructor() {
         super();
@@ -131,7 +169,6 @@ const REF_HANDLE_SIZE = 14;
         this.canvas.addEventListener('pointermove', this.onPointerMove);
         this.canvas.addEventListener('pointerup', this.onPointerUp);
         this.canvas.addEventListener('pointercancel', this.onPointerUp);
-        globalThis.addEventListener('keydown', this.onKeyDown);
       }
 
       connectedCallback() {
@@ -144,7 +181,6 @@ const REF_HANDLE_SIZE = 14;
       }
 
       disconnectedCallback() {
-        globalThis.removeEventListener('keydown', this.onKeyDown);
         this.outsideListenerTarget?.removeEventListener('pointerdown', this.onOutsidePointerDown);
         this.outsideListenerTarget = null;
       }
@@ -168,17 +204,6 @@ const REF_HANDLE_SIZE = 14;
         this.render();
       }
 
-      /** ツール・ドラッグ状態に応じてキャンバス上のカーソル形状を切り替える */
-      private updateCursor() {
-        if (this.tool === 'move') {
-          this.canvas.style.cursor = this.moveLayer || this.refLayer ? 'grabbing' : 'grab';
-        } else if (this.tool === 'select') {
-          this.canvas.style.cursor = 'crosshair';
-        } else {
-          this.canvas.style.cursor = 'default';
-        }
-      }
-
       setBrush(brush: BrushSetting) {
         this.brush = brush;
       }
@@ -198,18 +223,18 @@ const REF_HANDLE_SIZE = 14;
        */
       setBackgroundColor(color: string) {
         const { r, g, b, a } = hexToRgba(color);
+        const style = this.bgLayer.style;
         if (a >= 1) {
-          this.bgLayer.style.backgroundImage = 'none';
-          this.bgLayer.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-        } else {
-          this.bgLayer.style.backgroundColor = '#ffffff';
-          this.bgLayer.style.backgroundImage =
-            `linear-gradient(rgba(${r}, ${g}, ${b}, ${a}), rgba(${r}, ${g}, ${b}, ${a})), ` +
-            `linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), ` +
-            `linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)`;
-          this.bgLayer.style.backgroundSize = 'auto, 16px 16px, 16px 16px';
-          this.bgLayer.style.backgroundPosition = '0 0, 0 0, 8px 8px';
+          style.backgroundImage = 'none';
+          style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+          return;
         }
+        const tint = `rgba(${r}, ${g}, ${b}, ${a})`;
+        const checker = 'linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)';
+        style.backgroundColor = '#ffffff';
+        style.backgroundImage = `linear-gradient(${tint}, ${tint}), ${checker}, ${checker}`;
+        style.backgroundSize = 'auto, 16px 16px, 16px 16px';
+        style.backgroundPosition = '0 0, 0 0, 8px 8px';
       }
 
       setGridVisible(visible: boolean) {
@@ -223,53 +248,69 @@ const REF_HANDLE_SIZE = 14;
         this.drawOverlay();
       }
 
+      runShortcutAction(action: ShortcutActionId): boolean {
+        if (action === 'deselect') {
+          if (!this.floating && !this.selection) return false;
+          this.commitPendingMove();
+          this.selection = null;
+          this.render();
+          return true;
+        }
+
+        if (action !== 'deleteSelection') return false;
+        const selection = this.selection;
+        if (this.tool !== 'select' || !selection || selection.w < 1 || selection.h < 1) return false;
+        const layer = this.editableNormalLayer();
+        if (!layer) return false;
+
+        const before = layer.snapshot();
+        layer.ctx.clearRect(selection.x, selection.y, selection.w, selection.h);
+        this.pushRegionCommand(layer, before, selection, 'delete-selection');
+        this.render();
+        return true;
+      }
+
+      /** ツール・ドラッグ状態に応じてキャンバス上のカーソル形状を切り替える */
+      private updateCursor() {
+        let cursor = 'default';
+        if (this.tool === 'move') cursor = this.floating || this.refDrag ? 'grabbing' : 'grab';
+        else if (this.tool === 'select') cursor = 'crosshair';
+        this.canvas.style.cursor = cursor;
+      }
+
       private drawOverlay() {
         const ctx = this.canvas.getContext('2d');
         if (!ctx || !this.doc) return;
 
         // フローティング移動中(まだレイヤーに確定していない)は選択枠も現在位置に追従させる
-        const effectiveSelection = this.moveLayer && this.moveRegion
-          ? {
-            x: this.moveRegion.x + this.moveLiveOffset.dx,
-            y: this.moveRegion.y + this.moveLiveOffset.dy,
-            w: this.moveRegion.w,
-            h: this.moveRegion.h,
-          }
-          : this.selection;
+        const selection = this.floating ? offsetRect(this.floating.region, this.floating.live) : this.selection;
 
-        if (effectiveSelection && effectiveSelection.w > 0 && effectiveSelection.h > 0) {
-          ctx.save();
-          ctx.strokeStyle = '#007acc';
-          ctx.lineWidth = 1;
+        ctx.save();
+        ctx.strokeStyle = OVERLAY_COLOR;
+        ctx.fillStyle = OVERLAY_COLOR;
+        ctx.lineWidth = 1;
+        if (hasArea(selection)) {
           ctx.setLineDash([4, 4]);
-          ctx.strokeRect(
-            effectiveSelection.x + 0.5,
-            effectiveSelection.y + 0.5,
-            effectiveSelection.w - 1,
-            effectiveSelection.h - 1,
-          );
-          ctx.restore();
+          ctx.strokeRect(selection.x + 0.5, selection.y + 0.5, selection.w - 1, selection.h - 1);
         }
 
         const active = this.doc.activeLayer;
         if (this.tool === 'move' && active?.type === 'reference') {
-          ctx.save();
-          ctx.strokeStyle = '#007acc';
-          ctx.lineWidth = 1;
+          const { x, y, w, h } = active.bounds;
           ctx.setLineDash([]);
-          ctx.strokeRect(active.x + 0.5, active.y + 0.5, active.width - 1, active.height - 1);
-          ctx.fillStyle = '#007acc';
-          ctx.fillRect(
-            active.x + active.width - REF_HANDLE_SIZE / 2,
-            active.y + active.height - REF_HANDLE_SIZE / 2,
-            REF_HANDLE_SIZE,
-            REF_HANDLE_SIZE,
-          );
-          ctx.restore();
+          ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+          ctx.fillRect(x + w - REF_HANDLE_SIZE / 2, y + h - REF_HANDLE_SIZE / 2, REF_HANDLE_SIZE, REF_HANDLE_SIZE);
         }
+        ctx.restore();
       }
 
-      private toCanvasPoint(e: PointerEvent): { x: number; y: number } {
+      /** アクティブレイヤーが描画可能な通常レイヤーならそれを返す */
+      private editableNormalLayer(): NormalLayer | null {
+        const layer = this.doc?.activeLayer;
+        return layer?.type === 'normal' && layer.editable ? layer : null;
+      }
+
+      private toCanvasPoint(e: PointerEvent): Point {
         const rect = this.canvas.getBoundingClientRect();
         const scaleX = this.canvas.width / rect.width;
         const scaleY = this.canvas.height / rect.height;
@@ -278,12 +319,50 @@ const REF_HANDLE_SIZE = 14;
 
       /** 選択範囲をキャンバスの範囲内に収める(キャンバス外から/へドラッグされた場合でも安全に扱えるようにする) */
       private clampRectToCanvas(rect: Rect): Rect {
-        const x0 = Math.max(0, Math.min(this.canvas.width, rect.x));
-        const y0 = Math.max(0, Math.min(this.canvas.height, rect.y));
-        const x1 = Math.max(0, Math.min(this.canvas.width, rect.x + rect.w));
-        const y1 = Math.max(0, Math.min(this.canvas.height, rect.y + rect.h));
+        const { width, height } = this.canvas;
+        const x0 = clamp(rect.x, 0, width);
+        const y0 = clamp(rect.y, 0, height);
+        const x1 = clamp(rect.x + rect.w, 0, width);
+        const y1 = clamp(rect.y + rect.h, 0, height);
         return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
       }
+
+      private shouldIgnoreDrawPointer(e: PointerEvent): boolean {
+        return this.touchDrawingDisabled && e.pointerType === 'touch';
+      }
+
+      private emitPointerInfo(point: Point, pressure: number, pointerType: string) {
+        this.dispatchEvent(
+          new CustomEvent('pointer-info', {
+            detail: { x: point.x, y: point.y, pressure, pointerType },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      }
+
+      // ---- 選択 ----
+
+      private beginSelection(point: Point) {
+        this.commitPendingMove();
+        this.selectStart = point;
+        this.selection = this.clampRectToCanvas(rectFromPoints(point, point));
+        this.render();
+      }
+
+      private updateSelection(point: Point) {
+        if (!this.selectStart) return;
+        this.selection = this.clampRectToCanvas(rectFromPoints(this.selectStart, point));
+        this.render();
+      }
+
+      private finishSelection() {
+        if (this.selection && (this.selection.w < 1 || this.selection.h < 1)) this.selection = null;
+        this.selectStart = null;
+        this.render();
+      }
+
+      // ---- ポインタイベント ----
 
       /**
        * 選択ツール使用時、キャンバスの外側(canvas-desk のパディング部分)からでも
@@ -298,100 +377,32 @@ const REF_HANDLE_SIZE = 14;
         if (inside) return;
 
         this.canvas.setPointerCapture(e.pointerId);
-        const mode = this.gesture.down(e.pointerId, e.clientX, e.clientY);
-        if (mode !== 'draw') return;
-
-        this.commitPendingMove();
-        const point = this.toCanvasPoint(e);
-        this.selectStart = point;
-        this.selection = this.clampRectToCanvas({ x: Math.round(point.x), y: Math.round(point.y), w: 0, h: 0 });
-        this.render();
+        if (this.gesture.down(e.pointerId, e.clientX, e.clientY) !== 'draw') return;
+        this.beginSelection(this.toCanvasPoint(e));
       };
-
-      private onKeyDown = (e: KeyboardEvent) => {
-        const shortcuts = settingsStore.get().shortcuts;
-        if (matchesShortcut(e, shortcuts, 'deselect')) {
-          const target = e.target as HTMLElement | null;
-          if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-            return;
-          }
-          if (this.runShortcutAction('deselect')) e.preventDefault();
-          return;
-        }
-
-        if (!matchesShortcut(e, shortcuts, 'deleteSelection')) return;
-        const target = e.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-
-        if (this.runShortcutAction('deleteSelection')) e.preventDefault();
-      };
-
-      runShortcutAction(action: ShortcutActionId): boolean {
-        if (action === 'deselect') {
-          if (!this.moveLayer && !this.selection) return false;
-          this.commitPendingMove();
-          this.selection = null;
-          this.render();
-          return true;
-        }
-
-        if (action !== 'deleteSelection') return false;
-        if (this.tool !== 'select' || !this.selection || this.selection.w < 1 || this.selection.h < 1) return false;
-
-        const doc = this.doc;
-        const layer = doc?.activeLayer;
-        if (!doc || !layer || layer.type !== 'normal' || layer.locked || !layer.visible) return false;
-
-        const before = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-        layer.ctx.clearRect(this.selection.x, this.selection.y, this.selection.w, this.selection.h);
-        this.pushRegionCommand(layer, before, this.selection, 'delete-selection');
-        this.render();
-        return true;
-      }
 
       private onPointerDown = (e: PointerEvent) => {
         this.canvas.setPointerCapture(e.pointerId);
-        const mode = this.gesture.down(e.pointerId, e.clientX, e.clientY);
-        if (mode !== 'draw') return;
-        if (this.shouldIgnoreDrawPointer(e)) return;
-
-        const doc = this.doc;
-        if (!doc) return;
+        if (this.gesture.down(e.pointerId, e.clientX, e.clientY) !== 'draw') return;
+        if (this.shouldIgnoreDrawPointer(e) || !this.doc) return;
         const point = this.toCanvasPoint(e);
 
-        if (this.tool === 'select') {
-          this.commitPendingMove();
-          this.selectStart = point;
-          this.selection = this.clampRectToCanvas({ x: Math.round(point.x), y: Math.round(point.y), w: 0, h: 0 });
-          this.render();
-          return;
+        switch (this.tool) {
+          case 'select':
+            this.beginSelection(point);
+            return;
+          case 'move':
+            this.beginMove(point);
+            this.updateCursor();
+            return;
+          case 'fill':
+            this.fillAt(point);
+            return;
+          case 'pen':
+          case 'eraser':
+            this.beginStroke(point, e.pressure);
+            return;
         }
-
-        if (this.tool === 'move') {
-          this.beginMove(doc, point);
-          this.updateCursor();
-          return;
-        }
-
-        const layer = doc.activeLayer;
-        if (!layer || layer.type !== 'normal' || layer.locked || !layer.visible) return;
-
-        if (this.tool === 'fill') {
-          const before = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-          const bbox = layer.floodFill(point.x, point.y);
-          if (bbox) this.pushRegionCommand(layer, before, bbox, 'fill');
-          this.render();
-          return;
-        }
-
-        if (this.tool !== 'pen' && this.tool !== 'eraser') return;
-
-        this.strokeLayer = layer;
-        this.strokeBefore = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-        this.strokeDirty = null;
-        this.lastPoint = point;
-        this.paintAt(point, e.pressure);
-        this.render();
       };
 
       private onPointerMove = (e: PointerEvent) => {
@@ -406,285 +417,229 @@ const REF_HANDLE_SIZE = 14;
 
         const point = this.toCanvasPoint(e);
 
-        if (this.tool === 'select' && this.selectStart) {
-          const x = Math.min(this.selectStart.x, point.x);
-          const y = Math.min(this.selectStart.y, point.y);
-          const w = Math.abs(point.x - this.selectStart.x);
-          const h = Math.abs(point.y - this.selectStart.y);
-          this.selection = this.clampRectToCanvas({
-            x: Math.round(x),
-            y: Math.round(y),
-            w: Math.round(w),
-            h: Math.round(h),
-          });
-          this.render();
+        if (this.tool === 'select') {
+          this.updateSelection(point);
           return;
         }
 
         if (this.tool === 'move') {
           this.updateMove(point);
-          this.dispatchEvent(
-            new CustomEvent('pointer-info', {
-              detail: { x: point.x, y: point.y, pressure: result.pressure, pointerType: e.pointerType },
-              bubbles: true,
-              composed: true,
-            }),
-          );
-          return;
+        } else {
+          if (!this.stroke) return;
+          this.continueStroke(point, result.pressure);
         }
-
-        if (!this.strokeLayer) return;
-        this.interpolateAndPaint(point, result.pressure);
-        this.lastPoint = point;
-        this.render();
-        this.dispatchEvent(
-          new CustomEvent('pointer-info', {
-            detail: { x: point.x, y: point.y, pressure: result.pressure, pointerType: e.pointerType },
-            bubbles: true,
-            composed: true,
-          }),
-        );
+        this.emitPointerInfo(point, result.pressure, e.pointerType);
       };
 
       private onPointerUp = (e: PointerEvent) => {
         this.gesture.up(e.pointerId);
-
-        if (this.tool === 'select') {
-          if (this.selection && (this.selection.w < 1 || this.selection.h < 1)) this.selection = null;
-          this.selectStart = null;
-          this.render();
-          return;
-        }
-
-        if (this.tool === 'move') {
-          this.finishMove();
-          return;
-        }
-
-        this.finishStroke();
+        if (this.tool === 'select') this.finishSelection();
+        else if (this.tool === 'move') this.finishMove();
+        else this.finishStroke();
       };
 
-      private shouldIgnoreDrawPointer(e: PointerEvent): boolean {
-        return this.touchDrawingDisabled && e.pointerType === 'touch';
+      // ---- 塗りつぶし ----
+
+      private fillAt(point: Point) {
+        const layer = this.editableNormalLayer();
+        if (!layer) return;
+        const before = layer.snapshot();
+        const bbox = layer.floodFill(point.x, point.y);
+        if (bbox) this.pushRegionCommand(layer, before, bbox, 'fill');
+        this.render();
       }
 
-      private beginMove(doc: SosyokuDocument, point: { x: number; y: number }) {
-        const layer = doc.activeLayer;
-        if (!layer || layer.locked || !layer.visible) return;
+      // ---- ペン/消しゴム ----
+
+      private beginStroke(point: Point, pressure: number) {
+        const layer = this.editableNormalLayer();
+        if (!layer) return;
+        this.stroke = { layer, before: layer.snapshot(), dirty: null, lastPoint: point };
+        this.paintAt(point, pressure);
+        this.render();
+      }
+
+      /** 前回位置から今回位置までをブラシ半径に応じた間隔で補間しながら描く */
+      private continueStroke(point: Point, pressure: number) {
+        const stroke = this.stroke;
+        if (!stroke) return;
+        const from = stroke.lastPoint;
+        const dx = point.x - from.x;
+        const dy = point.y - from.y;
+        const step = Math.max(1, this.brush.radius * 0.5);
+        const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / step));
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          this.paintAt({ x: from.x + dx * t, y: from.y + dy * t }, pressure);
+        }
+        stroke.lastPoint = point;
+        this.render();
+      }
+
+      private paintAt(point: Point, pressure: number) {
+        const stroke = this.stroke;
+        if (!stroke) return;
+        const adjusted = clamp(evaluatePressureCurve(this.pressureCurve, clamp(pressure, 0, 1)), 0, 1);
+        const radius = this.brush.radius * (0.3 + adjusted * 0.7);
+        const bbox = stroke.layer.stamp(point.x, point.y, radius, this.brush.shape, this.tool === 'eraser');
+        if (bbox) stroke.dirty = stroke.dirty ? unionRect(stroke.dirty, bbox) : bbox;
+      }
+
+      private finishStroke() {
+        const stroke = this.stroke;
+        this.stroke = null;
+        if (stroke?.dirty) this.pushRegionCommand(stroke.layer, stroke.before, stroke.dirty, this.tool);
+      }
+
+      // ---- 移動 ----
+
+      private beginMove(point: Point) {
+        const layer = this.doc?.activeLayer;
+        if (!layer?.editable) return;
 
         if (layer.type === 'reference') {
           const nearCorner = Math.abs(point.x - (layer.x + layer.width)) < REF_HANDLE_SIZE &&
             Math.abs(point.y - (layer.y + layer.height)) < REF_HANDLE_SIZE;
-          this.refLayer = layer;
-          this.refDragMode = nearCorner ? 'resize' : 'move';
-          this.refDragStart = {
-            x: point.x,
-            y: point.y,
-            origX: layer.x,
-            origY: layer.y,
-            origW: layer.width,
-            origH: layer.height,
-          };
+          this.refDrag = { layer, mode: nearCorner ? 'resize' : 'move', start: point, original: layer.bounds };
           return;
         }
 
         // 同じレイヤーへのフローティング移動が既に進行中ならそのまま継続する(選択解除まではレイヤーに
         // 確定しない)。別レイヤーへの移動を新たに始める場合は、先に前のフローティング移動を確定する。
-        if (this.moveLayer !== layer) {
+        if (this.floating?.layer !== layer) {
           this.commitPendingMove();
-          const region: Rect = this.selection && this.selection.w > 0 && this.selection.h > 0
+          const region: Rect = hasArea(this.selection)
             ? this.selection
             : { x: 0, y: 0, w: layer.canvas.width, h: layer.canvas.height };
-
-          this.moveLayer = layer;
-          this.moveRegion = region;
-          this.moveFullBefore = layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height);
-          const content = cropImageData(this.moveFullBefore, region.x, region.y, region.w, region.h);
-          this.moveContentCanvas = new OffscreenCanvas(Math.max(1, region.w), Math.max(1, region.h));
-          const contentCtx = this.moveContentCanvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
-          contentCtx.putImageData(content, 0, 0);
-          this.moveCommittedOffset = { dx: 0, dy: 0 };
-          this.moveLiveOffset = { dx: 0, dy: 0 };
+          const before = layer.snapshot();
+          const content = new OffscreenCanvas(Math.max(1, region.w), Math.max(1, region.h));
+          (content.getContext('2d') as OffscreenCanvasRenderingContext2D)
+            .putImageData(cropImageData(before, region.x, region.y, region.w, region.h), 0, 0);
+          this.floating = {
+            layer,
+            before,
+            region,
+            content,
+            dragOrigin: null,
+            committed: ZERO_OFFSET,
+            live: ZERO_OFFSET,
+          };
         }
-        this.moveDragOrigin = point;
+        this.floating!.dragOrigin = point;
       }
 
-      private updateMove(point: { x: number; y: number }) {
-        if (this.refLayer && this.refDragStart) {
-          const dx = point.x - this.refDragStart.x;
-          const dy = point.y - this.refDragStart.y;
-          const layer = this.refLayer;
-          if (this.refDragMode === 'move') {
-            layer.setTransform(
-              Math.round(this.refDragStart.origX + dx),
-              Math.round(this.refDragStart.origY + dy),
-              this.refDragStart.origW,
-              this.refDragStart.origH,
-            );
-          } else {
-            const aspect = this.refDragStart.origH / this.refDragStart.origW;
-            const newW = Math.max(4, Math.round(this.refDragStart.origW + dx));
-            const newH = Math.max(4, Math.round(newW * aspect));
-            layer.setTransform(this.refDragStart.origX, this.refDragStart.origY, newW, newH);
-          }
+      private updateMove(point: Point) {
+        if (this.refDrag) {
+          this.updateReferenceDrag(this.refDrag, point);
           this.render();
           return;
         }
 
-        if (
-          this.moveLayer && this.moveFullBefore && this.moveRegion && this.moveContentCanvas &&
-          this.moveDragOrigin
-        ) {
-          const dx = this.moveCommittedOffset.dx + Math.round(point.x - this.moveDragOrigin.x);
-          const dy = this.moveCommittedOffset.dy + Math.round(point.y - this.moveDragOrigin.y);
-          const layer = this.moveLayer;
-          const ctx = layer.ctx;
-          // 常にフローティング開始時の元画像から作り直すため、何度ドラッグし直しても劣化・重複しない。
-          // 貼り付けは putImageData ではなく drawImage(source-over)を使い、選択範囲の透明部分で
-          // 移動先の既存の描画を消してしまわないようにする。
-          ctx.putImageData(this.moveFullBefore, 0, 0);
-          ctx.clearRect(this.moveRegion.x, this.moveRegion.y, this.moveRegion.w, this.moveRegion.h);
-          ctx.drawImage(this.moveContentCanvas, this.moveRegion.x + dx, this.moveRegion.y + dy);
-          this.moveLiveOffset = { dx, dy };
-          this.render();
+        const floating = this.floating;
+        if (!floating?.dragOrigin) return;
+        const offset = {
+          dx: floating.committed.dx + Math.round(point.x - floating.dragOrigin.x),
+          dy: floating.committed.dy + Math.round(point.y - floating.dragOrigin.y),
+        };
+        const { region } = floating;
+        const ctx = floating.layer.ctx;
+        // 常にフローティング開始時の元画像から作り直すため、何度ドラッグし直しても劣化・重複しない。
+        // 貼り付けは putImageData ではなく drawImage(source-over)を使い、選択範囲の透明部分で
+        // 移動先の既存の描画を消してしまわないようにする。
+        ctx.putImageData(floating.before, 0, 0);
+        ctx.clearRect(region.x, region.y, region.w, region.h);
+        ctx.drawImage(floating.content, region.x + offset.dx, region.y + offset.dy);
+        floating.live = offset;
+        this.render();
+      }
+
+      private updateReferenceDrag({ layer, mode, start, original }: ReferenceDrag, point: Point) {
+        const dx = point.x - start.x;
+        const dy = point.y - start.y;
+        if (mode === 'move') {
+          layer.setTransform({ ...original, x: Math.round(original.x + dx), y: Math.round(original.y + dy) });
+        } else {
+          const w = Math.max(4, Math.round(original.w + dx));
+          const h = Math.max(4, Math.round(w * (original.h / original.w)));
+          layer.setTransform({ ...original, w, h });
         }
       }
 
       private finishMove() {
-        if (this.refLayer && this.refDragStart) {
-          const layer = this.refLayer;
-          const before = {
-            x: this.refDragStart.origX,
-            y: this.refDragStart.origY,
-            w: this.refDragStart.origW,
-            h: this.refDragStart.origH,
-          };
-          const after = { x: layer.x, y: layer.y, w: layer.width, h: layer.height };
-          if (before.x !== after.x || before.y !== after.y || before.w !== after.w || before.h !== after.h) {
-            this.doc?.markDirty();
-            this.doc?.history.push({
-              label: 'transform',
-              undo: () => {
-                layer.setTransform(before.x, before.y, before.w, before.h);
-                this.doc?.markDirty();
-                this.render();
-              },
-              redo: () => {
-                layer.setTransform(after.x, after.y, after.w, after.h);
-                this.doc?.markDirty();
-                this.render();
-              },
-            });
+        const refDrag = this.refDrag;
+        if (refDrag) {
+          this.refDrag = null;
+          const { layer, original: before } = refDrag;
+          const after = layer.bounds;
+          if (!sameRect(before, after)) {
+            this.pushHistory(
+              'transform',
+              () => layer.setTransform(before),
+              () => layer.setTransform(after),
+            );
           }
-          this.refLayer = null;
-          this.refDragStart = null;
-          this.updateCursor();
-          return;
-        }
-
-        if (this.moveLayer) {
+        } else if (this.floating) {
           // このドラッグ分のオフセットを確定するが、レイヤー本体・履歴への反映は選択解除まで行わない
           // (commitPendingMoveを参照)。フローティング状態のまま次のドラッグを継続できる。
-          this.moveCommittedOffset = this.moveLiveOffset;
-          this.moveDragOrigin = null;
+          this.floating.committed = this.floating.live;
+          this.floating.dragOrigin = null;
         }
         this.updateCursor();
       }
 
       /** フローティング中の移動をレイヤーに確定し、履歴へ1つの操作として登録する */
       private commitPendingMove() {
-        if (!this.moveLayer || !this.moveFullBefore || !this.moveRegion) return;
-        const layer = this.moveLayer;
-        const region = this.moveRegion;
-        const { dx, dy } = this.moveCommittedOffset;
-        if (dx !== 0 || dy !== 0) {
-          const unionMinX = Math.max(0, Math.min(region.x, region.x + dx));
-          const unionMinY = Math.max(0, Math.min(region.y, region.y + dy));
-          const unionMaxX = Math.min(layer.canvas.width, Math.max(region.x + region.w, region.x + dx + region.w));
-          const unionMaxY = Math.min(layer.canvas.height, Math.max(region.y + region.h, region.y + dy + region.h));
-          const bbox: Rect = { x: unionMinX, y: unionMinY, w: unionMaxX - unionMinX, h: unionMaxY - unionMinY };
-          this.pushRegionCommand(layer, this.moveFullBefore, bbox, 'move');
-          if (this.selection) {
-            this.selection = { x: region.x + dx, y: region.y + dy, w: region.w, h: region.h };
-          }
+        const floating = this.floating;
+        if (!floating) return;
+        this.floating = null;
+        const { layer, region, committed } = floating;
+        if (committed.dx !== 0 || committed.dy !== 0) {
+          const moved = offsetRect(region, committed);
+          const bbox = this.clampRectToLayer(unionRect(region, moved), layer);
+          this.pushRegionCommand(layer, floating.before, bbox, 'move');
+          if (this.selection) this.selection = moved;
         }
-        this.moveLayer = null;
-        this.moveFullBefore = null;
-        this.moveRegion = null;
-        this.moveContentCanvas = null;
-        this.moveDragOrigin = null;
-        this.moveCommittedOffset = { dx: 0, dy: 0 };
-        this.moveLiveOffset = { dx: 0, dy: 0 };
         this.render();
       }
 
-      private finishStroke() {
-        if (this.strokeLayer && this.strokeBefore && this.strokeDirty) {
-          const layer = this.strokeLayer;
-          const before = this.strokeBefore;
-          const { minX, minY, maxX, maxY } = this.strokeDirty;
-          const bbox = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
-          this.pushRegionCommand(layer, before, bbox, this.tool);
-        }
-        this.strokeLayer = null;
-        this.strokeBefore = null;
-        this.strokeDirty = null;
-        this.lastPoint = null;
+      private clampRectToLayer(rect: Rect, layer: NormalLayer): Rect {
+        const x = Math.max(0, rect.x);
+        const y = Math.max(0, rect.y);
+        return {
+          x,
+          y,
+          w: Math.min(layer.canvas.width, rect.x + rect.w) - x,
+          h: Math.min(layer.canvas.height, rect.y + rect.h) - y,
+        };
       }
 
+      // ---- 履歴 ----
+
+      /**
+       * 操作を履歴に登録する。history.push()は'changed'イベントを同期的に発火する(タブの●表示はそれを
+       * 購読して即時反映される)ため、markDirty()は必ずpush()より前に呼び、発火時点で最新のdirty状態を読めるようにする。
+       */
+      private pushHistory(label: string, undo: () => void, redo: () => void) {
+        const doc = this.doc;
+        if (!doc) return;
+        const apply = (fn: () => void) => () => {
+          fn();
+          doc.markDirty();
+          this.render();
+        };
+        doc.markDirty();
+        doc.history.push({ label, undo: apply(undo), redo: apply(redo) });
+      }
+
+      /** 変更前の全体スナップショットと現在のレイヤーから、bbox部分だけを差分として履歴に登録する */
       private pushRegionCommand(layer: NormalLayer, beforeFull: ImageData, bbox: Rect, label: string) {
         const before = cropImageData(beforeFull, bbox.x, bbox.y, bbox.w, bbox.h);
         const after = layer.ctx.getImageData(bbox.x, bbox.y, bbox.w, bbox.h);
-        // history.push()はChangeイベントを同期的に発火する(タブの●表示はそれを購読して即時反映される)ため、
-        // markDirty()は必ずpush()より前に呼び、イベント発火時点で最新のdirty状態が読めるようにする。
-        this.doc?.markDirty();
-        this.doc?.history.push({
+        this.pushHistory(
           label,
-          undo: () => {
-            layer.ctx.putImageData(before, bbox.x, bbox.y);
-            this.doc?.markDirty();
-            this.render();
-          },
-          redo: () => {
-            layer.ctx.putImageData(after, bbox.x, bbox.y);
-            this.doc?.markDirty();
-            this.render();
-          },
-        });
-      }
-
-      private interpolateAndPaint(point: { x: number; y: number }, pressure: number) {
-        if (!this.lastPoint) {
-          this.paintAt(point, pressure);
-          return;
-        }
-        const dx = point.x - this.lastPoint.x;
-        const dy = point.y - this.lastPoint.y;
-        const dist = Math.hypot(dx, dy);
-        const step = Math.max(1, this.brush.radius * 0.5);
-        const steps = Math.max(1, Math.ceil(dist / step));
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          this.paintAt({ x: this.lastPoint.x + dx * t, y: this.lastPoint.y + dy * t }, pressure);
-        }
-      }
-
-      private paintAt(point: { x: number; y: number }, pressure: number) {
-        if (!this.strokeLayer) return;
-        const adjusted = evaluatePressureCurve(this.pressureCurve, Math.min(1, Math.max(0, pressure)));
-        const radius = this.brush.radius * (0.3 + Math.min(1, Math.max(0, adjusted)) * 0.7);
-        const bbox = this.strokeLayer.stamp(point.x, point.y, radius, this.brush.shape, this.tool === 'eraser');
-        if (!bbox) return;
-        const maxX = bbox.x + bbox.w - 1;
-        const maxY = bbox.y + bbox.h - 1;
-        if (!this.strokeDirty) {
-          this.strokeDirty = { minX: bbox.x, minY: bbox.y, maxX, maxY };
-        } else {
-          this.strokeDirty.minX = Math.min(this.strokeDirty.minX, bbox.x);
-          this.strokeDirty.minY = Math.min(this.strokeDirty.minY, bbox.y);
-          this.strokeDirty.maxX = Math.max(this.strokeDirty.maxX, maxX);
-          this.strokeDirty.maxY = Math.max(this.strokeDirty.maxY, maxY);
-        }
+          () => layer.ctx.putImageData(before, bbox.x, bbox.y),
+          () => layer.ctx.putImageData(after, bbox.x, bbox.y),
+        );
       }
     },
   );

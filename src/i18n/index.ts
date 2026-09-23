@@ -37,7 +37,7 @@ export function t(key: TranslationKey, vars?: Record<string, string | number>): 
   let text = dict[key] ?? key;
   if (vars) {
     for (const [name, value] of Object.entries(vars)) {
-      text = text.replace(`{${name}}`, String(value));
+      text = text.replaceAll(`{${name}}`, String(value));
     }
   }
   return text;

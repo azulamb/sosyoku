@@ -78,7 +78,8 @@ export interface PenIoModalElement extends HTMLElement {
           input.type = 'checkbox';
           input.checked = true;
           const label = document.createElement('span');
-          label.textContent = `${pen.name}(${pen.shape === 'round' ? '丸' : '四角'} / ${pen.size}px)`;
+          const shape = t(pen.shape === 'round' ? 'pen.shape.round' : 'pen.shape.square');
+          label.textContent = `${pen.name}(${shape} / ${pen.size}px)`;
           row.appendChild(input);
           row.appendChild(label);
           content.appendChild(row);

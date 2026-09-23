@@ -8,7 +8,9 @@ import type { TranslationKey } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
 import type { ToolButtonElement } from './tool-button.ts';
 
-export type ToolBarTool = 'pen' | 'eraser' | 'fill' | 'select' | 'move';
+import type { ToolName } from '../core/tools.ts';
+
+export type ToolBarTool = ToolName;
 
 export interface ToolBarElement extends HTMLElement {
   setActiveTool(tool: ToolBarTool): void;

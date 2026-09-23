@@ -6,6 +6,7 @@ import { nextPenId, settingsStore } from '../core/settings-store.ts';
 import type { PenSetting } from '../core/settings-store.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
+import { wrapIndex } from '../core/util.ts';
 import type { PenItemElement } from './pen-item.ts';
 import type { PenIoModalElement } from './pen-io-modal.ts';
 import type { MenuButtonElement } from './menu-button.ts';
@@ -119,10 +120,8 @@ export interface PenPanelElement extends HTMLElement {
 
         this.list.addEventListener('pen-selected', (e) => {
           const id = (e as CustomEvent<{ id: string }>).detail.id;
-          this.activePenId = id;
-          this.renderList();
           const pen = settingsStore.get().pens.find((p) => p.id === id);
-          if (pen) this.onActiveChange?.(pen);
+          if (pen) this.activate(pen);
         });
         this.list.addEventListener('pen-changed', () => this.persistAndNotify());
         this.list.addEventListener('pen-delete', (e) => {
@@ -134,7 +133,7 @@ export interface PenPanelElement extends HTMLElement {
 
       setActiveChangeCallback(cb: (pen: PenSetting) => void) {
         this.onActiveChange = cb;
-        const pen = settingsStore.get().pens.find((p) => p.id === this.activePenId);
+        const pen = this.activePen;
         if (pen) cb(pen);
       }
 
@@ -142,11 +141,18 @@ export interface PenPanelElement extends HTMLElement {
         const pens = settingsStore.get().pens;
         if (!pens.length) return;
         const currentIndex = Math.max(0, pens.findIndex((pen) => pen.id === this.activePenId));
-        const nextIndex = (currentIndex + offset % pens.length + pens.length) % pens.length;
-        const pen = pens[nextIndex];
+        this.activate(pens[wrapIndex(currentIndex, offset, pens.length)]);
+      }
+
+      /** 指定ペンをアクティブにして一覧を再描画し、ブラシへ反映させる */
+      private activate(pen: PenSetting) {
         this.activePenId = pen.id;
         this.renderList();
         this.onActiveChange?.(pen);
+      }
+
+      private get activePen(): PenSetting | undefined {
+        return settingsStore.get().pens.find((p) => p.id === this.activePenId);
       }
 
       private renderList() {
@@ -160,7 +166,7 @@ export interface PenPanelElement extends HTMLElement {
 
       private persistAndNotify() {
         settingsStore.update({ pens: settingsStore.get().pens });
-        const pen = settingsStore.get().pens.find((p) => p.id === this.activePenId);
+        const pen = this.activePen;
         if (pen) this.onActiveChange?.(pen);
       }
 
@@ -173,9 +179,7 @@ export interface PenPanelElement extends HTMLElement {
           shape: 'round',
         };
         settingsStore.update({ pens: [...pens, newPen] });
-        this.activePenId = newPen.id;
-        this.renderList();
-        this.onActiveChange?.(newPen);
+        this.activate(newPen);
       }
 
       private deletePen(id: string) {

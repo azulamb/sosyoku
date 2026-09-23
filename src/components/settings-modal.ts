@@ -3,7 +3,7 @@
 左に設定の大カテゴリ、右に設定内容を表示する汎用モーダル。ドキュメント設定・アプリ設定の両方で使い回す。
 最下部のキャンセル/保存のどちらかを押すまで閉じない(showBlockingDialogの挙動を利用)。
 */
-import { showBlockingDialog } from '../core/dialog.ts';
+import { type DialogResult, showBlockingDialog } from '../core/dialog.ts';
 
 export interface SettingsCategory {
   id: string;
@@ -12,7 +12,7 @@ export interface SettingsCategory {
 }
 
 export interface SettingsModalElement extends HTMLElement {
-  open(title: string, categories: SettingsCategory[], initialCategoryId?: string): Promise<'save' | 'cancel'>;
+  open(title: string, categories: SettingsCategory[], initialCategoryId?: string): Promise<DialogResult>;
 }
 
 ((script, init) => {
@@ -34,7 +34,7 @@ export interface SettingsModalElement extends HTMLElement {
         title: string,
         categories: SettingsCategory[],
         initialCategoryId?: string,
-      ): Promise<'save' | 'cancel'> {
+      ): Promise<DialogResult> {
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'display:flex; min-height:320px; gap:0;';
 
@@ -75,7 +75,7 @@ export interface SettingsModalElement extends HTMLElement {
         const initial = initialCategoryId ?? categories[0]?.id;
         if (initial) selectCategory(initial);
 
-        return await showBlockingDialog({ title, content: wrapper, saveLabel: '保存' });
+        return await showBlockingDialog({ title, content: wrapper });
       }
     },
   );

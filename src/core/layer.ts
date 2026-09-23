@@ -1,14 +1,18 @@
 import { hexToRgb } from './color.ts';
+import { createId, type Rect } from './util.ts';
 
 export type LayerType = 'normal' | 'reference';
 export type BrushShape = 'round' | 'square';
 
-interface LayerJSONBase {
-  id: string;
-  name: string;
+interface LayerState {
   visible: boolean;
   locked: boolean;
   opacity: number;
+}
+
+interface LayerJSONBase extends LayerState {
+  id: string;
+  name: string;
   file: string;
 }
 
@@ -27,13 +31,28 @@ export interface ReferenceLayerJSON extends LayerJSONBase {
 
 export type LayerJSON = NormalLayerJSON | ReferenceLayerJSON;
 
-let sequence = 0;
-function nextId(): string {
-  sequence += 1;
-  return `layer-${Date.now().toString(36)}-${sequence}`;
+function createCanvas(width: number, height: number): OffscreenCanvas {
+  return new OffscreenCanvas(Math.max(1, width), Math.max(1, height));
 }
 
-export abstract class LayerBase extends EventTarget {
+async function canvasToPngBytes(canvas: OffscreenCanvas): Promise<Uint8Array<ArrayBuffer>> {
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** RGBAバッファのバイトオフセットiのピクセルを、rgbで不透明に塗る(rgbがnullなら透明にする) */
+function writePixel(data: Uint8ClampedArray, i: number, rgb: [number, number, number] | null) {
+  if (rgb) {
+    data[i] = rgb[0];
+    data[i + 1] = rgb[1];
+    data[i + 2] = rgb[2];
+    data[i + 3] = 255;
+  } else {
+    data.fill(0, i, i + 4);
+  }
+}
+
+export abstract class LayerBase extends EventTarget implements LayerState {
   readonly id: string;
   name: string;
   visible = true;
@@ -44,9 +63,9 @@ export abstract class LayerBase extends EventTarget {
 
   constructor(id: string | undefined, name: string, width: number, height: number) {
     super();
-    this.id = id ?? nextId();
+    this.id = id ?? createId('layer');
     this.name = name;
-    this.canvas = new OffscreenCanvas(Math.max(1, width), Math.max(1, height));
+    this.canvas = createCanvas(width, height);
     // convertToBlob()は一度もgetContext()されていないOffscreenCanvasに対しては失敗するため、
     // 未描画のまっさらなレイヤーでも保存できるよう先にコンテキストを確立しておく
     this.canvas.getContext('2d');
@@ -58,18 +77,34 @@ export abstract class LayerBase extends EventTarget {
     return ctx;
   }
 
+  /** 表示中かつロックされていない(編集操作を受け付ける)状態か */
+  get editable(): boolean {
+    return this.visible && !this.locked;
+  }
+
+  /** レイヤー全体のピクセルを取得する(Undo用の「変更前」スナップショット等に使う) */
+  snapshot(): ImageData {
+    return this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /** 保存データから表示/ロック/不透明度を復元する */
+  restoreState(state: LayerState) {
+    this.visible = state.visible;
+    this.locked = state.locked;
+    this.opacity = state.opacity;
+  }
+
   /** ドキュメントサイズ変更時、左上を基準に透明領域を追加/切り詰め(拡大縮小はしない) */
   resizeCanvas(width: number, height: number) {
-    const next = new OffscreenCanvas(Math.max(1, width), Math.max(1, height));
+    const next = createCanvas(width, height);
     const nctx = next.getContext('2d') as OffscreenCanvasRenderingContext2D;
     nctx.imageSmoothingEnabled = false;
     nctx.drawImage(this.canvas, 0, 0);
     this.canvas = next;
   }
 
-  async toPngBytes(): Promise<Uint8Array<ArrayBuffer>> {
-    const blob = await this.canvas.convertToBlob({ type: 'image/png' });
-    return new Uint8Array(await blob.arrayBuffer());
+  toPngBytes(): Promise<Uint8Array<ArrayBuffer>> {
+    return canvasToPngBytes(this.canvas);
   }
 
   protected emitChanged() {
@@ -109,14 +144,8 @@ export class NormalLayer extends LayerBase {
     this.emitChanged();
   }
 
-  /** アンチエイリアスなしのブラシスタンプを1点描画する。eraseがtrueなら透明化する */
-  stamp(
-    cx: number,
-    cy: number,
-    radius: number,
-    shape: BrushShape,
-    erase: boolean,
-  ): { x: number; y: number; w: number; h: number } | null {
+  /** アンチエイリアスなしのブラシスタンプを1点描画する。eraseがtrueなら透明化する。戻り値は変更範囲 */
+  stamp(cx: number, cy: number, radius: number, shape: BrushShape, erase: boolean): Rect | null {
     const r = Math.max(0.5, radius);
     const minX = Math.max(0, Math.floor(cx - r));
     const minY = Math.max(0, Math.floor(cy - r));
@@ -128,35 +157,15 @@ export class NormalLayer extends LayerBase {
     const h = maxY - minY + 1;
     const ctx = this.ctx;
     const imageData = ctx.getImageData(minX, minY, w, h);
-    const data = imageData.data;
-    const [cr, cg, cb] = hexToRgb(this.color);
+    const rgb = erase ? null : hexToRgb(this.color);
     const r2 = r * r;
 
     for (let y = 0; y < h; y++) {
+      const dy = minY + y + 0.5 - cy;
       for (let x = 0; x < w; x++) {
-        const px = minX + x;
-        const py = minY + y;
-        let inside: boolean;
-        if (shape === 'round') {
-          const dx = px + 0.5 - cx;
-          const dy = py + 0.5 - cy;
-          inside = dx * dx + dy * dy <= r2;
-        } else {
-          inside = Math.abs(px + 0.5 - cx) <= r && Math.abs(py + 0.5 - cy) <= r;
-        }
-        if (!inside) continue;
-        const i = (y * w + x) * 4;
-        if (erase) {
-          data[i] = 0;
-          data[i + 1] = 0;
-          data[i + 2] = 0;
-          data[i + 3] = 0;
-        } else {
-          data[i] = cr;
-          data[i + 1] = cg;
-          data[i + 2] = cb;
-          data[i + 3] = 255;
-        }
+        const dx = minX + x + 0.5 - cx;
+        const inside = shape === 'round' ? dx * dx + dy * dy <= r2 : Math.abs(dx) <= r && Math.abs(dy) <= r;
+        if (inside) writePixel(imageData.data, (y * w + x) * 4, rgb);
       }
     }
     ctx.putImageData(imageData, minX, minY);
@@ -164,7 +173,7 @@ export class NormalLayer extends LayerBase {
   }
 
   /** 単色・完全一致・4近傍のフラッドフィル。塗り済み領域(alpha=255)から未塗り領域(alpha=0)への流し込み */
-  floodFill(startX: number, startY: number): { x: number; y: number; w: number; h: number } | null {
+  floodFill(startX: number, startY: number): Rect | null {
     const width = this.canvas.width;
     const height = this.canvas.height;
     const sx = Math.floor(startX);
@@ -174,11 +183,10 @@ export class NormalLayer extends LayerBase {
     const ctx = this.ctx;
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
-    const startIndex = (sy * width + sx) * 4;
-    const targetAlpha = data[startIndex + 3];
+    const targetAlpha = data[(sy * width + sx) * 4 + 3];
     if (targetAlpha === 255) return null;
 
-    const [cr, cg, cb] = hexToRgb(this.color);
+    const rgb = hexToRgb(this.color);
     const visited = new Uint8Array(width * height);
     const stack: number[] = [sx, sy];
     let minX = sx, minY = sy, maxX = sx, maxY = sy;
@@ -192,10 +200,7 @@ export class NormalLayer extends LayerBase {
       const i = idx * 4;
       if (data[i + 3] !== targetAlpha) continue;
       visited[idx] = 1;
-      data[i] = cr;
-      data[i + 1] = cg;
-      data[i + 2] = cb;
-      data[i + 3] = 255;
+      writePixel(data, i, rgb);
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
@@ -246,6 +251,11 @@ export class ReferenceLayer extends LayerBase {
     this.redraw();
   }
 
+  /** ドキュメント上の配置矩形 */
+  get bounds(): Rect {
+    return { x: this.x, y: this.y, w: this.width, h: this.height };
+  }
+
   private redraw() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -253,11 +263,11 @@ export class ReferenceLayer extends LayerBase {
   }
 
   /** 移動・拡大縮小(アスペクト比固定)。回転は非対応 */
-  setTransform(x: number, y: number, width: number, height: number) {
+  setTransform({ x, y, w, h }: Rect) {
     this.x = x;
     this.y = y;
-    this.width = width;
-    this.height = height;
+    this.width = w;
+    this.height = h;
     this.redraw();
     this.emitChanged();
   }
@@ -268,12 +278,11 @@ export class ReferenceLayer extends LayerBase {
   }
 
   /** 保存時は表示用の(ドキュメントサイズに配置済みの)canvasではなく、劣化を避けるため自然解像度の元画像を書き出す */
-  override async toPngBytes(): Promise<Uint8Array<ArrayBuffer>> {
-    const natural = new OffscreenCanvas(this.naturalWidth, this.naturalHeight);
+  override toPngBytes(): Promise<Uint8Array<ArrayBuffer>> {
+    const natural = createCanvas(this.naturalWidth, this.naturalHeight);
     const ctx = natural.getContext('2d') as OffscreenCanvasRenderingContext2D;
     ctx.drawImage(this.sourceBitmap, 0, 0);
-    const blob = await natural.convertToBlob({ type: 'image/png' });
-    return new Uint8Array(await blob.arrayBuffer());
+    return canvasToPngBytes(natural);
   }
 
   toJSON(file: string): ReferenceLayerJSON {

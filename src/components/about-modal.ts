@@ -3,6 +3,7 @@
 Sosyokuについて。GitHubへのリンクを含む簡易モーダル(情報表示のみなので閉じるボタン1つ)。
 */
 import { t } from '../i18n/index.ts';
+import { createDialogButton, createDialogFooter, createModalDialog } from '../core/dialog.ts';
 
 export interface AboutModalElement extends HTMLElement {
   open(): Promise<void>;
@@ -27,9 +28,6 @@ const REPO_URL = 'https://github.com/azulamb/sosyoku';
     class extends HTMLElement implements AboutModalElement {
       open(): Promise<void> {
         return new Promise((resolve) => {
-          const dialog = document.createElement('dialog');
-          dialog.style.cssText = 'padding:0;border:none;max-width:min(90vw,420px);width:100%;';
-
           const body = document.createElement('div');
           body.style.cssText = 'padding:20px;';
 
@@ -52,30 +50,13 @@ const REPO_URL = 'https://github.com/azulamb/sosyoku';
           updateStatus.setAttribute('role', 'status');
           updateStatus.style.cssText = 'min-height:18px;margin-top:14px;color:var(--text-muted);font-size:12px;';
 
-          const footer = document.createElement('div');
-          footer.style.cssText =
-            'display:flex;justify-content:space-between;gap:8px;padding:12px 18px;border-top:1px solid var(--border);';
-          const updateBtn = document.createElement('button');
-          updateBtn.type = 'button';
-          updateBtn.textContent = t('about.update');
+          const updateBtn = createDialogButton(t('about.update'), 'secondary');
           updateBtn.disabled = !('serviceWorker' in navigator);
-          updateBtn.style.cssText =
-            'background:transparent;border:1px solid var(--border);border-radius:4px;padding:6px 14px;color:inherit;';
-          const closeBtn = document.createElement('button');
-          closeBtn.type = 'button';
-          closeBtn.textContent = t('dialog.close');
-          closeBtn.style.cssText =
-            'background:var(--accent);color:var(--accent-contrast);border:none;border-radius:4px;padding:6px 14px;';
-          footer.appendChild(updateBtn);
-          footer.appendChild(closeBtn);
+          const closeBtn = createDialogButton(t('dialog.close'), 'primary');
+          const footer = createDialogFooter('space-between', [updateBtn, closeBtn]);
 
-          body.appendChild(heading);
-          body.appendChild(desc);
-          body.appendChild(link);
-          body.appendChild(updateStatus);
-          dialog.appendChild(body);
-          dialog.appendChild(footer);
-          document.body.appendChild(dialog);
+          body.append(heading, desc, link, updateStatus);
+          const dialog = createModalDialog('min(90vw,420px)', [body, footer]);
 
           const cleanup = () => {
             dialog.close();

@@ -1,5 +1,7 @@
 import { type CurvePoint, DEFAULT_PRESSURE_CURVE } from './pressure-curve.ts';
 import { defaultShortcuts, normalizeShortcuts, type ShortcutAssignment } from './shortcuts.ts';
+import type { BrushShape } from './layer.ts';
+import { createId } from './util.ts';
 
 export const DEFAULT_PALETTE: string[] = [
   '#F5F8FF', // soft white
@@ -26,7 +28,7 @@ export const DEFAULT_PALETTE: string[] = [
 
 export type ThemeSetting = 'auto' | 'light' | 'dark';
 export type LanguageSetting = 'auto' | 'ja' | 'en';
-export type PenShape = 'round' | 'square';
+export type PenShape = BrushShape;
 
 export interface PenSetting {
   id: string;
@@ -68,15 +70,18 @@ function defaults(): AppSettings {
 
 let cache: AppSettings | null = null;
 
+/** JSON文字列を既定値で補完した設定に変換する(不正なJSONは例外を投げる) */
+function parseSettings(json: string): AppSettings {
+  const parsed = JSON.parse(json);
+  return { ...defaults(), ...parsed, shortcuts: normalizeShortcuts(parsed.shortcuts) };
+}
+
 function load(): AppSettings {
   if (cache) return cache;
   let result: AppSettings | null = null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      result = { ...defaults(), ...parsed, shortcuts: normalizeShortcuts(parsed.shortcuts) };
-    }
+    if (raw) result = parseSettings(raw);
   } catch {
     // 破損データは無視してデフォルトへフォールバック
   }
@@ -84,9 +89,10 @@ function load(): AppSettings {
   return cache;
 }
 
-function persist() {
-  if (!cache) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+/** 保存して 'settings-changed' を通知する */
+function persistAndNotify(settings: AppSettings) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  document.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }));
 }
 
 export function applyTheme(theme: ThemeSetting) {
@@ -96,7 +102,7 @@ export function applyTheme(theme: ThemeSetting) {
 }
 
 export function nextPenId(): string {
-  return `pen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  return createId('pen');
 }
 
 export const settingsStore = {
@@ -104,18 +110,13 @@ export const settingsStore = {
     return load();
   },
   update(patch: Partial<AppSettings>) {
-    const current = load();
-    Object.assign(current, patch);
-    persist();
-    document.dispatchEvent(new CustomEvent('settings-changed', { detail: current }));
+    persistAndNotify(Object.assign(load(), patch));
   },
   exportJSON(): string {
     return JSON.stringify(load(), null, 2);
   },
   importJSON(json: string) {
-    const parsed = JSON.parse(json);
-    cache = { ...defaults(), ...parsed, shortcuts: normalizeShortcuts(parsed.shortcuts) };
-    persist();
-    document.dispatchEvent(new CustomEvent('settings-changed', { detail: cache }));
+    cache = parseSettings(json);
+    persistAndNotify(cache);
   },
 };

@@ -41,6 +41,31 @@ export async function saveSsx(doc: SosyokuDocument): Promise<Blob> {
   return createZip(entries);
 }
 
+function createLayerFromJson(json: LayerJSON, bitmap: ImageBitmap, docWidth: number, docHeight: number): Layer {
+  if (json.type === 'reference') {
+    return new ReferenceLayer({
+      id: json.id,
+      name: json.name,
+      image: bitmap,
+      docWidth,
+      docHeight,
+      x: json.x,
+      y: json.y,
+      width: json.width,
+      height: json.height,
+    });
+  }
+  const layer = new NormalLayer({
+    id: json.id,
+    name: json.name,
+    width: docWidth,
+    height: docHeight,
+    color: json.color,
+  });
+  layer.ctx.drawImage(bitmap, 0, 0);
+  return layer;
+}
+
 export async function loadSsx(file: File | Blob): Promise<SosyokuDocument> {
   const entries = await unzip(file);
   const manifestEntry = entries.find((e) => e.path === 'document.json' || e.path.endsWith('/document.json'));
@@ -60,39 +85,9 @@ export async function loadSsx(file: File | Blob): Promise<SosyokuDocument> {
     const entry = entries.find((e) => e.path === layerJson.file);
     if (!entry) continue;
     const bitmap = await createImageBitmap(entry.file);
-
-    if (layerJson.type === 'normal') {
-      const layer = new NormalLayer({
-        id: layerJson.id,
-        name: layerJson.name,
-        width: manifest.width,
-        height: manifest.height,
-        color: layerJson.color,
-      });
-      const ctx = layer.ctx;
-      ctx.clearRect(0, 0, manifest.width, manifest.height);
-      ctx.drawImage(bitmap, 0, 0);
-      layer.visible = layerJson.visible;
-      layer.locked = layerJson.locked;
-      layer.opacity = layerJson.opacity;
-      layers.push(layer);
-    } else {
-      const layer = new ReferenceLayer({
-        id: layerJson.id,
-        name: layerJson.name,
-        image: bitmap,
-        docWidth: manifest.width,
-        docHeight: manifest.height,
-        x: layerJson.x,
-        y: layerJson.y,
-        width: layerJson.width,
-        height: layerJson.height,
-      });
-      layer.visible = layerJson.visible;
-      layer.locked = layerJson.locked;
-      layer.opacity = layerJson.opacity;
-      layers.push(layer);
-    }
+    const layer = createLayerFromJson(layerJson, bitmap, manifest.width, manifest.height);
+    layer.restoreState(layerJson);
+    layers.push(layer);
   }
 
   for (let i = layers.length - 1; i >= 0; i--) doc.addLayer(layers[i], 0);
@@ -103,18 +98,12 @@ export async function loadSsx(file: File | Blob): Promise<SosyokuDocument> {
 
 /** png/jpg等の画像ファイルを、書き込み不可の参照レイヤーとして取り込む */
 export async function importImageAsReferenceLayer(file: File, doc: SosyokuDocument): Promise<ReferenceLayer> {
-  const bitmap = await createImageBitmap(file);
-  const layer = new ReferenceLayer({
+  return new ReferenceLayer({
     name: file.name.replace(/\.[^.]+$/, ''),
-    image: bitmap,
+    image: await createImageBitmap(file),
     docWidth: doc.width,
     docHeight: doc.height,
-    x: 0,
-    y: 0,
-    width: bitmap.width,
-    height: bitmap.height,
   });
-  return layer;
 }
 
 export function isSsxFile(file: File): boolean {

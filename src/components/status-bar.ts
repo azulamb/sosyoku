@@ -6,6 +6,7 @@
 */
 import { t } from '../i18n/index.ts';
 import { openPopup } from '../core/popup.ts';
+import { clamp } from '../core/util.ts';
 
 export interface StatusBarElement extends HTMLElement {
   setZoom(zoom: number): void;
@@ -159,7 +160,7 @@ const ZOOM_MAX_PERCENT = 1600;
       }
 
       private applyZoomPercent(percent: number) {
-        const clamped = Math.max(ZOOM_MIN_PERCENT, Math.min(ZOOM_MAX_PERCENT, percent || 100));
+        const clamped = clamp(percent || 100, ZOOM_MIN_PERCENT, ZOOM_MAX_PERCENT);
         this.zoomSlider.value = String(clamped);
         this.zoomNumber.value = String(clamped);
         this.onZoomChange?.(clamped / 100);

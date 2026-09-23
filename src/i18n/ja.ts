@@ -108,6 +108,8 @@ export const ja = {
   'layer.visibility': '表示/非表示',
   'layer.lock': 'ロック',
   'pen.shapeToggle': '形状を切り替え',
+  'pen.shape.round': '丸',
+  'pen.shape.square': '四角',
   'pen.size': 'サイズ(px)',
   'pen.delete': '削除',
 

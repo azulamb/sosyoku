@@ -7,6 +7,7 @@ import { NormalLayer } from '../core/layer.ts';
 import { importImageAsReferenceLayer } from '../core/ssx.ts';
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
+import { wrapIndex } from '../core/util.ts';
 import type { LayerAddModalElement } from './layer-add-modal.ts';
 import type { LayerItemElement } from './layer-item.ts';
 
@@ -102,21 +103,24 @@ export interface LayerPanelElement extends HTMLElement {
       }
 
       setDocument(doc: SosyokuDocument) {
+        // ドキュメント切替のたびにリスナーが積み重ならないよう、前のドキュメントからは購読を外す
+        this.doc?.removeEventListener('layers-changed', this.onLayersChanged);
         this.doc = doc;
-        doc.addEventListener('layers-changed', () => this.renderList());
+        doc.addEventListener('layers-changed', this.onLayersChanged);
         this.renderList();
       }
+
+      private onLayersChanged = () => this.renderList();
 
       setRenderCallback(cb: () => void) {
         this.renderCallback = cb;
       }
 
       selectRelative(offset: number) {
-        if (!this.doc?.layers.length) return;
-        const currentIndex = Math.max(0, this.doc.layers.findIndex((layer) => layer.id === this.doc?.activeLayerId));
-        const nextIndex = (currentIndex + offset % this.doc.layers.length + this.doc.layers.length) %
-          this.doc.layers.length;
-        this.doc.activeLayerId = this.doc.layers[nextIndex].id;
+        const doc = this.doc;
+        if (!doc?.layers.length) return;
+        const currentIndex = Math.max(0, doc.layers.findIndex((layer) => layer.id === doc.activeLayerId));
+        doc.activeLayerId = doc.layers[wrapIndex(currentIndex, offset, doc.layers.length)].id;
         this.renderList();
         this.renderCallback?.();
       }

@@ -1,9 +1,10 @@
 /** settings-modal に渡す「ドキュメントの設定」「設定」の各カテゴリのフォームを組み立てる */
 import { type GridSetting, MAX_CANVAS_SIZE, nextGridId, type SosyokuDocument } from './document.ts';
-import { applyTheme, settingsStore } from './settings-store.ts';
+import { applyTheme, type LanguageSetting, settingsStore, type ThemeSetting } from './settings-store.ts';
 import { downloadBlob, pickFiles } from './file-io.ts';
-import { t } from '../i18n/index.ts';
+import { t, type TranslationKey } from '../i18n/index.ts';
 import type { PressureCurveEditorElement } from '../components/pressure-curve-editor.ts';
+import type { SettingsCategory } from '../components/settings-modal.ts';
 import { hexToRgba, rgbaToHex8, rgbToHex } from './color.ts';
 import {
   bindingFromEvent,
@@ -18,10 +19,7 @@ import {
   startGamepadCapture,
 } from './shortcuts.ts';
 
-export interface EditableCategory {
-  id: string;
-  label: string;
-  content: HTMLElement;
+export interface EditableCategory extends SettingsCategory {
   apply: () => void;
   dispose?: () => void;
 }
@@ -29,6 +27,41 @@ export interface EditableCategory {
 function fieldStyle(el: HTMLElement) {
   el.style.cssText =
     'padding:6px 8px; border:1px solid var(--border); border-radius:4px; background:var(--bg); color:inherit; font-size:13px;';
+}
+
+function numberInput(value: number, min: number, max?: number): HTMLInputElement {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = String(min);
+  if (max !== undefined) input.max = String(max);
+  input.value = String(value);
+  fieldStyle(input);
+  return input;
+}
+
+function colorInput(value: string, width: number): HTMLInputElement {
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = value;
+  input.style.cssText =
+    `width:${width}px; height:30px; padding:0; border:1px solid var(--border); border-radius:4px; background:none; flex:none;`;
+  return input;
+}
+
+function selectInput<T extends string>(
+  options: readonly (readonly [T, TranslationKey])[],
+  value: T,
+): HTMLSelectElement {
+  const select = document.createElement('select');
+  fieldStyle(select);
+  for (const [optionValue, labelKey] of options) {
+    const option = document.createElement('option');
+    option.value = optionValue;
+    option.textContent = t(labelKey);
+    select.appendChild(option);
+  }
+  select.value = value;
+  return select;
 }
 
 function labeledField(label: string, input: HTMLElement): HTMLElement {
@@ -58,19 +91,8 @@ export function buildDocumentSettingsCategories(doc: SosyokuDocument): EditableC
   titleInput.value = doc.title;
   fieldStyle(titleInput);
 
-  const widthInput = document.createElement('input');
-  widthInput.type = 'number';
-  widthInput.min = '1';
-  widthInput.max = String(MAX_CANVAS_SIZE);
-  widthInput.value = String(doc.width);
-  fieldStyle(widthInput);
-
-  const heightInput = document.createElement('input');
-  heightInput.type = 'number';
-  heightInput.min = '1';
-  heightInput.max = String(MAX_CANVAS_SIZE);
-  heightInput.value = String(doc.height);
-  fieldStyle(heightInput);
+  const widthInput = numberInput(doc.width, 1, MAX_CANVAS_SIZE);
+  const heightInput = numberInput(doc.height, 1, MAX_CANVAS_SIZE);
 
   docContent.appendChild(labeledField(t('docsettings.title.label'), titleInput));
   docContent.appendChild(labeledField(t('docsettings.width.label', { max: MAX_CANVAS_SIZE }), widthInput));
@@ -78,10 +100,8 @@ export function buildDocumentSettingsCategories(doc: SosyokuDocument): EditableC
 
   const bgRow = document.createElement('div');
   bgRow.style.cssText = 'display:flex; align-items:center; gap:10px;';
-  const bgColorInput = document.createElement('input');
-  bgColorInput.type = 'color';
-  bgColorInput.style.cssText =
-    'width:48px; height:30px; padding:0; border:1px solid var(--border); border-radius:4px; background:none; flex:none;';
+  const initialBg = hexToRgba(doc.backgroundColor);
+  const bgColorInput = colorInput(rgbToHex(initialBg.r, initialBg.g, initialBg.b), 48);
   const bgAlphaInput = document.createElement('input');
   bgAlphaInput.type = 'range';
   bgAlphaInput.min = '0';
@@ -89,8 +109,6 @@ export function buildDocumentSettingsCategories(doc: SosyokuDocument): EditableC
   bgAlphaInput.title = t('docsettings.backgroundColor.alpha');
   bgAlphaInput.style.cssText = 'flex:1; accent-color: var(--accent);';
 
-  const initialBg = hexToRgba(doc.backgroundColor);
-  bgColorInput.value = rgbToHex(initialBg.r, initialBg.g, initialBg.b);
   bgAlphaInput.value = String(Math.round(initialBg.a * 100));
 
   bgRow.appendChild(bgColorInput);
@@ -107,43 +125,26 @@ export function buildDocumentSettingsCategories(doc: SosyokuDocument): EditableC
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; align-items:center; gap:6px;';
 
-    const xInput = document.createElement('input');
-    xInput.type = 'number';
-    xInput.min = '1';
-    xInput.value = String(grid.x);
-    fieldStyle(xInput);
-    xInput.style.width = '64px';
-    xInput.style.flex = 'none';
+    const [xInput, yInput] = [grid.x, grid.y].map((value) => {
+      const input = numberInput(value, 1);
+      input.style.width = '64px';
+      input.style.flex = 'none';
+      return input;
+    });
+    const gridColorInput = colorInput(grid.color, 36);
 
-    const yInput = document.createElement('input');
-    yInput.type = 'number';
-    yInput.min = '1';
-    yInput.value = String(grid.y);
-    fieldStyle(yInput);
-    yInput.style.width = '64px';
-    yInput.style.flex = 'none';
-
-    const colorInput = document.createElement('input');
-    colorInput.type = 'color';
-    colorInput.value = grid.color;
-    colorInput.style.cssText =
-      'width:36px; height:30px; padding:0; border:1px solid var(--border); border-radius:4px; background:none; flex:none;';
-
+    const entry = { id: grid.id, xInput, yInput, colorInput: gridColorInput };
     const removeBtn = actionButton(t('docsettings.grid.remove'));
     removeBtn.style.flex = 'none';
     removeBtn.addEventListener('click', () => {
       row.remove();
-      const idx = rows.findIndex((r) => r.xInput === xInput);
+      const idx = rows.indexOf(entry);
       if (idx !== -1) rows.splice(idx, 1);
     });
 
-    row.appendChild(xInput);
-    row.appendChild(document.createTextNode('×'));
-    row.appendChild(yInput);
-    row.appendChild(colorInput);
-    row.appendChild(removeBtn);
+    row.append(xInput, '×', yInput, gridColorInput, removeBtn);
     gridList.appendChild(row);
-    rows.push({ id: grid.id, xInput, yInput, colorInput });
+    rows.push(entry);
   };
 
   for (const grid of doc.grids) addRow(grid);
@@ -190,35 +191,17 @@ export function buildAppSettingsCategories(): EditableCategory[] {
   const settings = settingsStore.get();
 
   const generalContent = document.createElement('div');
-  const langSelect = document.createElement('select');
-  fieldStyle(langSelect);
-  for (
-    const [value, key] of [['auto', 'appsettings.language.auto'], ['ja', 'appsettings.language.ja'], [
-      'en',
-      'appsettings.language.en',
-    ]] as const
-  ) {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = t(key);
-    langSelect.appendChild(opt);
-  }
-  langSelect.value = settings.language;
+  const langSelect = selectInput<LanguageSetting>([
+    ['auto', 'appsettings.language.auto'],
+    ['ja', 'appsettings.language.ja'],
+    ['en', 'appsettings.language.en'],
+  ], settings.language);
 
-  const themeSelect = document.createElement('select');
-  fieldStyle(themeSelect);
-  for (
-    const [value, key] of [['auto', 'appsettings.theme.auto'], ['light', 'appsettings.theme.light'], [
-      'dark',
-      'appsettings.theme.dark',
-    ]] as const
-  ) {
-    const opt = document.createElement('option');
-    opt.value = value;
-    opt.textContent = t(key);
-    themeSelect.appendChild(opt);
-  }
-  themeSelect.value = settings.theme;
+  const themeSelect = selectInput<ThemeSetting>([
+    ['auto', 'appsettings.theme.auto'],
+    ['light', 'appsettings.theme.light'],
+    ['dark', 'appsettings.theme.dark'],
+  ], settings.theme);
 
   generalContent.appendChild(labeledField(t('appsettings.language.label'), langSelect));
   generalContent.appendChild(labeledField(t('appsettings.theme.label'), themeSelect));
@@ -268,11 +251,7 @@ export function buildAppSettingsCategories(): EditableCategory[] {
 
   const addRow = document.createElement('div');
   addRow.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:14px;';
-  const addColorInput = document.createElement('input');
-  addColorInput.type = 'color';
-  addColorInput.value = '#7f8c99';
-  addColorInput.style.cssText =
-    'width:36px; height:30px; padding:0; border:1px solid var(--border); border-radius:4px; background:none;';
+  const addColorInput = colorInput('#7f8c99', 36);
   const addBtn = actionButton(t('appsettings.palette.add'));
   addBtn.addEventListener('click', () => {
     palette.push(addColorInput.value);
@@ -316,8 +295,8 @@ export function buildAppSettingsCategories(): EditableCategory[] {
       content: generalContent,
       apply: () => {
         settingsStore.update({
-          language: langSelect.value as 'auto' | 'ja' | 'en',
-          theme: themeSelect.value as 'auto' | 'light' | 'dark',
+          language: langSelect.value as LanguageSetting,
+          theme: themeSelect.value as ThemeSetting,
           zoomWheelReversed: zoomReverseCheckbox.checked,
         });
         applyTheme(settingsStore.get().theme);

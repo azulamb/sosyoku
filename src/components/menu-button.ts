@@ -15,7 +15,7 @@ export interface MenuButtonElement extends HTMLElement {
 }
 
 ((script, init) => {
-  const tagname = script.dataset['menu-button'] || 'menu-button';
+  const tagname = script.dataset['menuButton'] || 'menu-button';
   if (customElements.get(tagname)) {
     return;
   }

@@ -5,7 +5,8 @@
 */
 import { t } from '../i18n/index.ts';
 import { createIcon } from '../core/icon.ts';
-import { showBlockingDialog } from '../core/dialog.ts';
+import { showTextInputDialog } from '../core/dialog.ts';
+import { emit } from '../core/dom.ts';
 
 export interface TabInfo {
   id: string;
@@ -67,9 +68,7 @@ export interface CanvasTabsElement extends HTMLElement {
         newBtn.className = 'new-btn';
         newBtn.appendChild(createIcon('add', 18));
         newBtn.title = t('tab.new');
-        newBtn.addEventListener('click', () => {
-          this.dispatchEvent(new CustomEvent('tab-new', { bubbles: true, composed: true }));
-        });
+        newBtn.addEventListener('click', () => emit(this, 'tab-new'));
         document.addEventListener('locale-changed', () => {
           newBtn.title = t('tab.new');
         });
@@ -92,7 +91,7 @@ export interface CanvasTabsElement extends HTMLElement {
           }
 
           const label = document.createElement('span');
-          label.textContent = tab.title || '無題';
+          label.textContent = tab.title || t('document.untitled');
           label.addEventListener('dblclick', (e) => {
             e.stopPropagation();
             void this.renameTab(tab);
@@ -106,39 +105,19 @@ export interface CanvasTabsElement extends HTMLElement {
           closeBtn.title = t('dialog.close');
           closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.dispatchEvent(new CustomEvent('tab-close', { detail: { id: tab.id }, bubbles: true, composed: true }));
+            emit(this, 'tab-close', { id: tab.id });
           });
           el.appendChild(closeBtn);
 
-          el.addEventListener('click', () => {
-            this.dispatchEvent(
-              new CustomEvent('tab-select', { detail: { id: tab.id }, bubbles: true, composed: true }),
-            );
-          });
+          el.addEventListener('click', () => emit(this, 'tab-select', { id: tab.id }));
 
           this.list.appendChild(el);
         }
       }
 
       private async renameTab(tab: TabInfo) {
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = tab.title;
-        input.style.cssText = 'width:100%;padding:8px;font-size:14px;box-sizing:border-box;';
-        const result = await showBlockingDialog({
-          title: t('rename.document.title'),
-          content: input,
-          saveLabel: t('dialog.change'),
-        });
-        if (result === 'save' && input.value.trim()) {
-          this.dispatchEvent(
-            new CustomEvent('tab-rename', {
-              detail: { id: tab.id, name: input.value.trim() },
-              bubbles: true,
-              composed: true,
-            }),
-          );
-        }
+        const name = await showTextInputDialog(t('rename.document.title'), tab.title);
+        if (name) emit(this, 'tab-rename', { id: tab.id, name });
       }
     },
   );

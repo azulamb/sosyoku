@@ -1,5 +1,18 @@
 import type { SosyokuDocument } from './document.ts';
-import { hexToRgba } from './color.ts';
+import { hexToCss } from './color.ts';
+
+type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
+/** 表示中(visible)のレイヤーを最背面から順に不透明度込みで合成する */
+function drawVisibleLayers(ctx: Context2D, doc: SosyokuDocument) {
+  for (let i = doc.layers.length - 1; i >= 0; i--) {
+    const layer = doc.layers[i];
+    if (!layer.visible) continue;
+    ctx.globalAlpha = layer.opacity;
+    ctx.drawImage(layer.canvas, 0, 0);
+  }
+  ctx.globalAlpha = 1;
+}
 
 export class CanvasEngine {
   private target: HTMLCanvasElement;
@@ -24,13 +37,7 @@ export class CanvasEngine {
     this.resize(doc.width, doc.height);
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, doc.width, doc.height);
-    for (let i = doc.layers.length - 1; i >= 0; i--) {
-      const layer = doc.layers[i];
-      if (!layer.visible) continue;
-      ctx.globalAlpha = layer.opacity;
-      ctx.drawImage(layer.canvas, 0, 0);
-    }
-    ctx.globalAlpha = 1;
+    drawVisibleLayers(ctx, doc);
     if (this.gridVisible) this.renderGrid(doc);
   }
 
@@ -62,14 +69,8 @@ export async function exportFlattenedPng(doc: SosyokuDocument): Promise<Blob> {
   const canvas = new OffscreenCanvas(doc.width, doc.height);
   const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
   ctx.imageSmoothingEnabled = false;
-  const { r, g, b, a } = hexToRgba(doc.backgroundColor);
-  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+  ctx.fillStyle = hexToCss(doc.backgroundColor);
   ctx.fillRect(0, 0, doc.width, doc.height);
-  for (let i = doc.layers.length - 1; i >= 0; i--) {
-    const layer = doc.layers[i];
-    if (!layer.visible) continue;
-    ctx.globalAlpha = layer.opacity;
-    ctx.drawImage(layer.canvas, 0, 0);
-  }
+  drawVisibleLayers(ctx, doc);
   return await canvas.convertToBlob({ type: 'image/png' });
 }

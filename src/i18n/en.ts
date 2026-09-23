@@ -110,6 +110,8 @@ export const en: Record<TranslationKey, string> = {
   'layer.visibility': 'Show/Hide',
   'layer.lock': 'Lock',
   'pen.shapeToggle': 'Toggle shape',
+  'pen.shape.round': 'Round',
+  'pen.shape.square': 'Square',
   'pen.size': 'Size (px)',
   'pen.delete': 'Delete',
 
