@@ -107,6 +107,7 @@ export const en: Record<TranslationKey, string> = {
   'pen.defaultName': 'Pen {n}',
 
   'tab.new': 'New Document',
+  'tab.closeConfirm': '"{title}" has unsaved changes. Discard changes and close this tab?',
   'layer.visibility': 'Show/Hide',
   'layer.lock': 'Lock',
   'pen.shapeToggle': 'Toggle shape',

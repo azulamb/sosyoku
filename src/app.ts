@@ -160,6 +160,11 @@ function bootstrap() {
   if (canvasArea) setupDragAndDrop(canvasArea, (files) => void handleIncomingFiles(files));
 
   globalThis.addEventListener('keydown', onGlobalKeyDown);
+  globalThis.addEventListener('beforeunload', (event) => {
+    if (![...openDocuments.values()].some((document) => document.dirty)) return;
+    event.preventDefault();
+    event.returnValue = true;
+  });
 
   const initialDoc = createDocument(t('document.untitled'));
   registerDocument(initialDoc);
@@ -189,7 +194,9 @@ function setupTabs() {
   listen<{ id: string; name: string }>(canvasTabs, 'tab-rename', ({ id, name }) => {
     const target = openDocuments.get(id);
     if (!target) return;
+    if (target.title === name) return;
     target.title = name;
+    target.markDirty();
     refreshTabs();
   });
 }
@@ -458,7 +465,11 @@ function createNewDocument() {
 }
 
 function closeTab(id: string) {
-  if (!openDocuments.has(id)) return;
+  const target = openDocuments.get(id);
+  if (!target) return;
+  if (target.dirty && !globalThis.confirm(t('tab.closeConfirm', { title: target.title || t('document.untitled') }))) {
+    return;
+  }
   openDocuments.delete(id);
   fileHandles.delete(id);
   if (openDocuments.size === 0) {

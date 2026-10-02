@@ -105,6 +105,7 @@ export const ja = {
   'pen.defaultName': 'ペン {n}',
 
   'tab.new': '新規ドキュメント',
+  'tab.closeConfirm': '「{title}」には未保存の変更があります。変更を破棄してタブを閉じますか？',
   'layer.visibility': '表示/非表示',
   'layer.lock': 'ロック',
   'pen.shapeToggle': '形状を切り替え',
